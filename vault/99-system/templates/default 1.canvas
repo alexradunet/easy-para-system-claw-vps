@@ -1,0 +1,9 @@
+{
+	"nodes":[
+		{"id":"286d30c7ce66bb3f","type":"text","text":"<!-- DAILY_NOTE_WIDGET_PLACEHOLDER -->\nThis will be replaced by the daily note widget","x":-200,"y":-240,"width":500,"height":660},
+		{"id":"tasks-template","type":"text","text":"## Tasks\n\n- [ ] Task 1\n- [ ] Task 2\n- [ ] Task 3","x":320,"y":-240,"width":700,"height":660,"color":"3"},
+		{"id":"header-template","type":"text","text":"# Daily Canvas - {{date}}\n\nWelcome to your daily canvas!","x":-200,"y":-620,"width":500,"height":120,"color":"1"},
+		{"id":"navigation-widget-placeholder","type":"text","text":"<!-- NAVIGATION_WIDGET_PLACEHOLDER -->\nThis will be replaced by the navigation widget","x":320,"y":-620,"width":700,"height":120,"color":"6"}
+	],
+	"edges":[]
+}

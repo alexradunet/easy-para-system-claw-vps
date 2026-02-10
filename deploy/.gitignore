@@ -1,0 +1,10 @@
+# Secrets
+.env
+
+# Runtime data
+data/
+vault/
+
+# OS
+.DS_Store
+Thumbs.db

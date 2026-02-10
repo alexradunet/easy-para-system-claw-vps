@@ -1,0 +1,18 @@
+# Secrets
+.env
+*.env
+
+# Runtime data
+data/
+
+# Obsidian workspace state
+vault/.obsidian/workspace.json
+vault/.obsidian/workspace-mobile.json
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
