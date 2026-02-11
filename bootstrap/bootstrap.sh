@@ -41,10 +41,21 @@ echo "║         AI-Assisted Setup Preparation                        ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    log_error "Please run as root (use sudo)"
-    exit 1
+# Determine current user and sudo availability
+CURRENT_USER=$(whoami)
+if [ "$EUID" -eq 0 ]; then
+    RUNNING_AS_ROOT=true
+    SUDO_CMD=""
+else
+    RUNNING_AS_ROOT=false
+    # Check if we have passwordless sudo
+    if sudo -n true 2>/dev/null; then
+        SUDO_CMD="sudo"
+        log_info "Running as $CURRENT_USER with sudo access"
+    else
+        log_error "This script requires root or passwordless sudo. Please run as root or ensure sudo is configured."
+        exit 1
+    fi
 fi
 
 # Check OS
@@ -68,22 +79,25 @@ if [[ ! "$OS" =~ (Debian|Ubuntu) ]]; then
     fi
 fi
 
-# Set deploy user
-if id "debian" &>/dev/null; then
+# Set deploy user (if running as debian/ubuntu, use current user)
+if [ "$CURRENT_USER" = "debian" ] || [ "$CURRENT_USER" = "ubuntu" ]; then
+    DEPLOY_USER="$CURRENT_USER"
+    log_info "Running as deploy user: $DEPLOY_USER"
+elif id "debian" &>/dev/null; then
     DEPLOY_USER="debian"
+    log_info "Deploy user: $DEPLOY_USER"
 elif id "ubuntu" &>/dev/null; then
     DEPLOY_USER="ubuntu"
+    log_info "Deploy user: $DEPLOY_USER"
 else
     log_info "Creating deploy user 'nazar'..."
-    useradd -m -s /bin/bash -G sudo nazar
+    $SUDO_CMD useradd -m -s /bin/bash -G sudo nazar
     DEPLOY_USER="nazar"
 fi
 
-log_info "Deploy user: $DEPLOY_USER"
-
 # Update package lists
 log_info "Updating package lists..."
-apt-get update -qq
+$SUDO_CMD apt-get update -qq
 
 # Install prerequisites
 log_info "Installing prerequisites..."
@@ -100,7 +114,7 @@ done
 
 if [ -n "$MISSING_PACKAGES" ]; then
     log_info "Installing missing packages:$MISSING_PACKAGES"
-    apt-get install -y -qq $MISSING_PACKAGES
+    $SUDO_CMD apt-get install -y -qq $MISSING_PACKAGES
 else
     log_info "All prerequisite packages already installed"
 fi
@@ -117,11 +131,11 @@ fi
 TOTAL_MEM=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 if [ "$TOTAL_MEM" -lt 2048 ] && [ ! -f /swapfile ]; then
     log_info "Low memory detected (${TOTAL_MEM}MB). Adding 2GB swap for Docker builds..."
-    fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    $SUDO_CMD fallocate -l 2G /swapfile || $SUDO_CMD dd if=/dev/zero of=/swapfile bs=1M count=2048
+    $SUDO_CMD chmod 600 /swapfile
+    $SUDO_CMD mkswap /swapfile
+    $SUDO_CMD swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | $SUDO_CMD tee -a /etc/fstab > /dev/null
     log_success "Swap enabled"
 fi
 
@@ -142,9 +156,9 @@ fi
 
 if [ "$NEED_NODE_INSTALL" = true ]; then
     # Remove old NodeSource repo if exists (to allow clean upgrade)
-    rm -f /etc/apt/sources.list.d/nodesource.list
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null 2>&1
-    apt-get install -y -qq nodejs
+    $SUDO_CMD rm -f /etc/apt/sources.list.d/nodesource.list
+    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO_CMD bash - > /dev/null 2>&1
+    $SUDO_CMD apt-get install -y -qq nodejs
     log_success "Node.js installed: $(node --version)"
 fi
 
@@ -183,42 +197,28 @@ else
     fi
 fi
 
-# Install selected AI assistant (or update if already installed)
+# Install selected AI assistant as the deploy user (NOT root)
 if [ "$INSTALL_AI" = "claude" ]; then
-    if command -v claude &> /dev/null; then
-        log_info "Claude Code already installed. Updating..."
-        npm update -g @anthropic-ai/claude-code > /dev/null 2>&1 || npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
-        log_success "Claude Code updated: $(claude --version 2>/dev/null || echo 'unknown version')"
+    if su - $DEPLOY_USER -c "command -v claude" &> /dev/null; then
+        log_info "Claude Code already installed for $DEPLOY_USER"
     else
-        log_info "Installing Claude Code..."
-        npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
+        log_info "Installing Claude Code as $DEPLOY_USER..."
+        su - $DEPLOY_USER -c "npm install -g @anthropic-ai/claude-code"
         log_success "Claude Code installed"
     fi
-    
-    # Ensure global npm bin is in PATH for the deploy user
-    NPM_GLOBAL_BIN=$(npm bin -g)
-    if ! grep -q "$NPM_GLOBAL_BIN" /home/$DEPLOY_USER/.bashrc 2>/dev/null; then
-        echo "export PATH=\"$NPM_GLOBAL_BIN:\$PATH\"" >> /home/$DEPLOY_USER/.bashrc
-    fi
-    export PATH="$NPM_GLOBAL_BIN:$PATH"
 fi
 
 if [ "$INSTALL_AI" = "kimi" ]; then
-    if command -v kimi &> /dev/null; then
-        log_info "Kimi Code already installed"
+    if su - $DEPLOY_USER -c "command -v kimi" &> /dev/null; then
+        log_info "Kimi Code already installed for $DEPLOY_USER"
     else
-        log_info "Installing Kimi Code..."
-        # Install uv first (required by Kimi Code)
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        # Add uv to PATH for current session
-        export PATH="$HOME/.local/bin:$PATH"
-        # Source the env file if it exists
-        [ -f "$HOME/.local/bin/env" ] && source "$HOME/.local/bin/env"
-        # Now install Kimi Code
-        curl -fsSL https://code.kimi.com/install.sh | bash
-        # Add Kimi to PATH for deploy user
-        if ! grep -q '$HOME/.local/bin' /home/$DEPLOY_USER/.bashrc 2>/dev/null; then
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/$DEPLOY_USER/.bashrc
+        log_info "Installing Kimi Code as $DEPLOY_USER..."
+        # Install uv and kimi as deploy user
+        su - $DEPLOY_USER -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+        su - $DEPLOY_USER -c 'export PATH="$HOME/.local/bin:$PATH" && curl -fsSL https://code.kimi.com/install.sh | bash'
+        # Ensure .local/bin is in PATH
+        if ! su - $DEPLOY_USER -c 'grep -q "$HOME/.local/bin" ~/.bashrc' 2>/dev/null; then
+            su - $DEPLOY_USER -c 'echo '"'"'export PATH="$HOME/.local/bin:$PATH"'"'"' >> ~/.bashrc'
         fi
         log_success "Kimi Code installed"
     fi
@@ -290,8 +290,10 @@ if [ -n "$REPO_URL" ]; then
     fi
 fi
 
-# Set ownership
-chown -R "$DEPLOY_USER:$DEPLOY_USER" "$DEPLOY_DIR"
+# Set ownership (only if running as root, otherwise assume current user owns it)
+if [ "$RUNNING_AS_ROOT" = true ] && [ "$DEPLOY_DIR" != "/home/$CURRENT_USER/nazar_deploy" ]; then
+    $SUDO_CMD chown -R "$DEPLOY_USER:$DEPLOY_USER" "$DEPLOY_DIR"
+fi
 
 # Create/update setup-complete marker with timestamp
 echo "Bootstrap completed: $(date -Iseconds)" > "$DEPLOY_DIR/.bootstrap-complete"
@@ -315,40 +317,68 @@ echo ""
 log_success "Prerequisites installed/updated"
 log_success "Deploy directory ready: $DEPLOY_DIR"
 
-if command -v claude &> /dev/null || [ "$INSTALL_AI" = "claude" ]; then
-    echo ""
-    log_info "To start the AI-assisted setup, run:"
-    echo ""
-    echo -e "  ${GREEN}su - $DEPLOY_USER${NC}"
-    echo -e "  ${GREEN}cd nazar_deploy${NC}"
-    echo -e "  ${GREEN}claude${NC}"
-    echo ""
+# Show appropriate instructions based on current user
+if [ "$CURRENT_USER" = "$DEPLOY_USER" ]; then
+    # Already running as deploy user
+    if command -v claude &> /dev/null || [ "$INSTALL_AI" = "claude" ]; then
+        echo ""
+        log_info "To start the AI-assisted setup, run:"
+        echo ""
+        echo -e "  ${GREEN}cd ~/nazar_deploy${NC}"
+        echo -e "  ${GREEN}claude${NC}"
+        echo ""
+    fi
+    if command -v kimi &> /dev/null || [ "$INSTALL_AI" = "kimi" ]; then
+        echo ""
+        log_info "To start the AI-assisted setup with Kimi Code, run:"
+        echo ""
+        echo -e "  ${GREEN}cd ~/nazar_deploy${NC}"
+        echo -e "  ${GREEN}kimi${NC}"
+        echo ""
+    fi
     echo "Then paste this prompt:"
     echo ""
     echo -e "  ${YELLOW}I'm a new user. Please read the project context and guide me${NC}"
     echo -e "  ${YELLOW}through setting up this VPS for the Nazar Second Brain system.${NC}"
-fi
-
-if command -v kimi &> /dev/null || [ "$INSTALL_AI" = "kimi" ]; then
+    
     echo ""
-    log_info "To start the AI-assisted setup with Kimi Code, run:"
-    echo ""
-    echo -e "  ${GREEN}su - $DEPLOY_USER${NC}"
-    echo -e "  ${GREEN}cd nazar_deploy${NC}"
-    echo -e "  ${GREEN}kimi${NC}"
-    echo ""
+    log_info "Next steps:"
+    echo "  1. Navigate to the deploy directory: cd ~/nazar_deploy"
+    echo "  2. Launch your AI assistant: claude (or kimi)"
+    echo "  3. Ask the AI to guide you through setup"
+else
+    # Running as root, need to switch to deploy user
+    if command -v claude &> /dev/null || [ "$INSTALL_AI" = "claude" ]; then
+        echo ""
+        log_info "To start the AI-assisted setup, run:"
+        echo ""
+        echo -e "  ${GREEN}su - $DEPLOY_USER${NC}"
+        echo -e "  ${GREEN}cd nazar_deploy${NC}"
+        echo -e "  ${GREEN}claude${NC}"
+        echo ""
+    fi
+    if command -v kimi &> /dev/null || [ "$INSTALL_AI" = "kimi" ]; then
+        echo ""
+        log_info "To start the AI-assisted setup with Kimi Code, run:"
+        echo ""
+        echo -e "  ${GREEN}su - $DEPLOY_USER${NC}"
+        echo -e "  ${GREEN}cd nazar_deploy${NC}"
+        echo -e "  ${GREEN}kimi${NC}"
+        echo ""
+    fi
     echo "Then paste this prompt:"
     echo ""
     echo -e "  ${YELLOW}I'm a new user. Please read the project context and guide me${NC}"
     echo -e "  ${YELLOW}through setting up this VPS for the Nazar Second Brain system.${NC}"
+    
+    echo ""
+    log_info "Next steps:"
+    echo "  1. Switch to the deploy user: su - $DEPLOY_USER"
+    echo "  2. Navigate to the deploy directory: cd ~/nazar_deploy"
+    echo "  3. Launch your AI assistant: claude (or kimi)"
+    echo "  4. Ask the AI to guide you through setup"
 fi
 
-echo ""
-log_info "Next steps:"
-echo "  1. Switch to the deploy user: su - $DEPLOY_USER"
-echo "  2. Navigate to the deploy directory: cd ~/nazar_deploy"
-echo "  3. Launch your AI assistant: claude (or kimi)"
-echo "  4. Ask the AI to guide you through setup"
 echo ""
 log_info "Refer to bootstrap/AI_BOOTSTRAP.md for the AI assistant's guide"
 echo ""
