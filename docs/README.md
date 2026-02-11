@@ -1,6 +1,6 @@
 # Second Brain — AI-Assisted Personal Knowledge Management
 
-A personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running OpenClaw, synchronized across devices via Syncthing, and hosted on a hardened Debian VPS behind Tailscale.
+A personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running OpenClaw, synchronized across devices via Git, and hosted on a hardened Debian VPS behind Tailscale.
 
 ## Clone and Run
 
@@ -49,7 +49,7 @@ second-brain/
 | [Skills Reference](skills.md) | Available skills (obsidian, voice, vps-setup) |
 | [Deployment Guide](deployment.md) | VPS provisioning and Docker deployment |
 | [Security Model](security.md) | Hardening, Tailscale, secrets management |
-| [Syncthing Setup](syncthing.md) | Multi-device vault synchronization |
+| [Git Sync](git-sync.md) | Multi-device vault synchronization |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 
 ## Quick Start

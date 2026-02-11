@@ -172,10 +172,10 @@ Tailscale ──► 22/tcp   ──► ALLOW ──► sshd (tailscale0 only)
 
 | Path | Owner | Why |
 |------|-------|-----|
-| `/srv/nazar/vault/` | `nazar:vault` (setgid) | Shared access: nazar (uid 1001) + container (uid 1000) via vault group |
-| `/srv/nazar/vault.git/` | `nazar:vault` | Bare repo, shared group access |
-| `/srv/nazar/data/` | `nazar:nazar` | Persistent container state |
-| `/srv/nazar/.env` | `nazar:nazar` | Secrets (API keys, tokens), editable by nazar user |
+| `/srv/nazar/vault/` | `debian:vault` (setgid) | Shared access: debian (uid 1000) + container (uid 1000) via vault group |
+| `/srv/nazar/vault.git/` | `debian:vault` | Bare repo, shared group access |
+| `/srv/nazar/data/` | `debian:debian` | Persistent container state |
+| `/srv/nazar/.env` | `debian:debian` | Secrets (API keys, tokens), editable by debian user |
 | `/opt/openclaw/` | `root:root` | Source code for Docker build |
 
 ## Extension Points

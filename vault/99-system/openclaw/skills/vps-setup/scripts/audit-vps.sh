@@ -36,8 +36,8 @@ else
     fail "Password auth still enabled"
 fi
 
-if grep -q "AllowUsers nazar" /etc/ssh/sshd_config.d/hardened.conf 2>/dev/null; then
-    pass "SSH restricted to 'nazar' user"
+if grep -q "AllowUsers debian" /etc/ssh/sshd_config.d/hardened.conf 2>/dev/null; then
+    pass "SSH restricted to 'debian' user"
 else
     warn "SSH not restricted to specific users"
 fi
@@ -192,19 +192,19 @@ else
 fi
 
 # Check auto-commit cron
-if crontab -u nazar -l 2>/dev/null | grep -q vault-auto-commit; then
+if crontab -u debian -l 2>/dev/null | grep -q vault-auto-commit; then
     pass "Auto-commit cron installed"
 else
-    fail "Auto-commit cron not installed for nazar user"
+    fail "Auto-commit cron not installed for debian user"
 fi
 
 # Check vault group
 if getent group vault >/dev/null 2>&1; then
     pass "vault group exists"
-    if id -nG nazar 2>/dev/null | grep -qw vault; then
-        pass "nazar user in vault group"
+    if id -nG debian 2>/dev/null | grep -qw vault; then
+        pass "debian user in vault group"
     else
-        fail "nazar user NOT in vault group"
+        fail "debian user NOT in vault group"
     fi
 else
     fail "vault group does not exist"

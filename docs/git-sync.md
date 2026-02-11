@@ -30,8 +30,8 @@ Laptop (Obsidian)  ◄──── git push/pull over SSH ────►  VPS (
 | `/srv/nazar/scripts/vault-auto-commit.sh` | Cron script: commits agent writes, pushes to bare repo |
 
 Permissions use a shared `vault` group with setgid:
-- `nazar` user (uid 1001) owns the files
-- Container (uid 1000) and `nazar` both belong to the `vault` group
+- `debian` user owns the files
+- Container (uid 1000) and `debian` both belong to the `vault` group
 - `core.sharedRepository=group` ensures git respects group permissions
 - Setgid on directories means new files inherit the `vault` group
 
@@ -43,10 +43,10 @@ Permissions use a shared `vault` group with setgid:
 
 ```bash
 # Clone the vault
-git clone nazar@<tailscale-ip>:/srv/nazar/vault.git ~/vault
+git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/vault
 
 # Or if using Tailscale MagicDNS:
-git clone nazar@vps-claw:/srv/nazar/vault.git ~/vault
+git clone debian@vps-claw:/srv/nazar/vault.git ~/vault
 ```
 
 **With Obsidian Git plugin:**
@@ -71,7 +71,7 @@ git add -A && git commit -m "vault update" && git push
 **Option A: Obsidian Git plugin (recommended)**
 1. Install Obsidian from Play Store
 2. Clone vault using Obsidian Git plugin settings:
-   - Repository URL: `nazar@<tailscale-ip>:/srv/nazar/vault.git`
+   - Repository URL: `debian@<tailscale-ip>:/srv/nazar/vault.git`
    - Requires Tailscale running on the phone
 3. Configure auto-pull and auto-push as above
 
@@ -80,7 +80,7 @@ git add -A && git commit -m "vault update" && git push
 2. In Termux:
    ```bash
    pkg install git openssh
-   git clone nazar@<tailscale-ip>:/srv/nazar/vault.git ~/storage/shared/vault
+   git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/storage/shared/vault
    ```
 3. Point Obsidian to `~/storage/shared/vault`
 4. Sync manually or via a Termux cron/widget
@@ -92,22 +92,22 @@ git add -A && git commit -m "vault update" && git push
 
 **Option B: Working Copy app**
 1. Install [Working Copy](https://workingcopy.app/) (Git client for iOS)
-2. Clone `nazar@<tailscale-ip>:/srv/nazar/vault.git`
+2. Clone `debian@<tailscale-ip>:/srv/nazar/vault.git`
 3. Open the vault folder in Obsidian via Files integration
 
 ## SSH Key Setup
 
-Clients need an SSH key that's authorized on the VPS. The `nazar` user's `~/.ssh/authorized_keys` controls access.
+Clients need an SSH key that's authorized on the VPS. The `debian` user's `~/.ssh/authorized_keys` controls access.
 
 ```bash
 # On your client device, generate a key (if you don't have one):
 ssh-keygen -t ed25519 -C "vault-sync"
 
 # Copy your public key to the VPS:
-ssh-copy-id nazar@<tailscale-ip>
+ssh-copy-id debian@<tailscale-ip>
 
 # Test:
-ssh nazar@<tailscale-ip> "echo ok"
+ssh debian@<tailscale-ip> "echo ok"
 ```
 
 ## Sync Log
@@ -157,7 +157,7 @@ If your vault already exists locally and you're setting up the VPS:
 ```bash
 cd ~/vault
 git init
-git remote add origin nazar@<tailscale-ip>:/srv/nazar/vault.git
+git remote add origin debian@<tailscale-ip>:/srv/nazar/vault.git
 git add -A
 git commit -m "initial vault"
 git push -u origin main

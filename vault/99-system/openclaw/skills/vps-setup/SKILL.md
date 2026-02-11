@@ -42,7 +42,7 @@ sudo bash provision-vps.sh --deploy-repo /srv/nazar/deploy
 ```bash
 sudo bash secure-vps.sh           # Harden the server
 sudo bash install-tailscale.sh    # Install + auth Tailscale
-# Verify: ssh nazar@<tailscale-ip>
+# Verify: ssh debian@<tailscale-ip>
 sudo bash lock-ssh-to-tailscale.sh  # Lock SSH to Tailscale
 sudo bash install-docker.sh       # Install Docker
 # Then deploy the stack with: /srv/nazar/deploy/scripts/setup-vps.sh
@@ -55,38 +55,29 @@ Run these phases in order. Each phase has a verification step — do not proceed
 
 ---
 
-## Phase 1: Create a Non-Root User
+## Phase 1: Verify Default User
 
-**Why:** Running services as root is dangerous. Create a dedicated user for all operations.
+**Why:** Running services as root is dangerous. Use the cloud provider's default `debian` user.
 
 ```bash
-# Create user with home directory
-adduser --disabled-password --gecos "Nazar Service" nazar
+# Verify debian user exists and can sudo
+su - debian -c "sudo whoami"
+# Expected: root
 
-# Add to sudo group
-usermod -aG sudo nazar
-
-# Allow passwordless sudo (for automation)
-echo "nazar ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/nazar
-chmod 0440 /etc/sudoers.d/nazar
-
-# Copy root's authorized_keys to the new user
-mkdir -p /home/nazar/.ssh
-cp /root/.ssh/authorized_keys /home/nazar/.ssh/authorized_keys
-chown -R nazar:nazar /home/nazar/.ssh
-chmod 700 /home/nazar/.ssh
-chmod 600 /home/nazar/.ssh/authorized_keys
+# If debian doesn't have passwordless sudo:
+echo "debian ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/debian
+chmod 0440 /etc/sudoers.d/debian
 ```
 
 **Verify:**
 ```bash
-su - nazar -c "sudo whoami"
+su - debian -c "sudo whoami"
 # Expected: root
 ```
 
-**Ask the user:** "Can you SSH into the VPS as the `nazar` user? Try: `ssh nazar@<vps-ip>`"
+**Ask the user:** "Can you SSH into the VPS as the `debian` user? Try: `ssh debian@<vps-ip>`"
 
-**Important:** After setup is complete, only the `nazar` user should be used for SSH access. The default cloud provider user (e.g., `debian` on OVH/Hetzner) should not be used. The SSH hardening in Phase 2 sets `AllowUsers nazar`, which prevents login as any other user.
+**Important:** After setup is complete, only the `debian` user should be used for SSH access. The SSH hardening in Phase 2 sets `AllowUsers debian`, which prevents login as any other user (including root).
 
 ---
 
@@ -119,25 +110,25 @@ X11Forwarding no
 AllowAgentForwarding no
 AllowTcpForwarding yes  # Required for VSCode Remote SSH
 
-# Only allow the nazar user
-AllowUsers nazar
+# Only allow the debian user
+AllowUsers debian
 EOF
 
 # Validate config before restarting
 sudo sshd -t
 ```
 
-**CRITICAL:** Before restarting SSH, confirm the user can log in as `nazar` with their SSH key. If they can't, they'll be locked out.
+**CRITICAL:** Before restarting SSH, confirm the user can log in as `debian` with their SSH key. If they can't, they'll be locked out.
 
 ```bash
-# Only after user confirms they can SSH as nazar:
+# Only after user confirms they can SSH as debian:
 sudo systemctl restart sshd
 ```
 
 **Verify:**
 ```bash
 # From user's machine (new terminal):
-ssh nazar@<vps-ip>
+ssh debian@<vps-ip>
 # Should work with key, password should be rejected
 ```
 
@@ -279,7 +270,7 @@ sudo ufw reload
 **CRITICAL:** Before doing this, confirm the user can SSH via the Tailscale IP:
 ```bash
 # From user's machine (must have Tailscale running):
-ssh nazar@<tailscale-ip>
+ssh debian@<tailscale-ip>
 ```
 
 **Verify:**
@@ -314,13 +305,13 @@ echo \
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-# Add nazar user to docker group (no sudo needed for docker commands)
-sudo usermod -aG docker nazar
+# Add debian user to docker group (no sudo needed for docker commands)
+sudo usermod -aG docker debian
 ```
 
 **Important:** The user must log out and back in for the docker group to take effect.
 
-**Note:** The provisioning script also adds an `openclaw` CLI alias to `/home/nazar/.bashrc`:
+**Note:** The provisioning script also adds an `openclaw` CLI alias to `/home/debian/.bashrc`:
 ```bash
 alias openclaw="sudo docker exec -it nazar-gateway node dist/index.js"
 ```
@@ -330,7 +321,7 @@ This allows running OpenClaw commands directly (e.g., `openclaw configure`, `ope
 # Log out and back in, then verify:
 exit
 # SSH back in
-ssh nazar@<tailscale-ip>
+ssh debian@<tailscale-ip>
 ```
 
 **Verify:**
@@ -353,7 +344,7 @@ docker compose version
 
 From the user's local machine:
 ```bash
-scp -r C:\Second_Brain\deploy\ nazar@<tailscale-ip>:/srv/nazar/deploy/
+scp -r C:\Second_Brain\deploy\ debian@<tailscale-ip>:/srv/nazar/deploy/
 ```
 
 ### Option B: Clone from git remote
@@ -361,7 +352,7 @@ scp -r C:\Second_Brain\deploy\ nazar@<tailscale-ip>:/srv/nazar/deploy/
 If the deploy repo has been pushed to GitHub/GitLab:
 ```bash
 sudo mkdir -p /srv/nazar
-sudo chown nazar:nazar /srv/nazar
+sudo chown debian:debian /srv/nazar
 git clone <repo-url> /srv/nazar/deploy
 ```
 
@@ -377,7 +368,7 @@ This creates:
 - `/srv/nazar/data/openclaw/` — OpenClaw config + state
 - `/srv/nazar/scripts/vault-auto-commit.sh` — cron script for agent writes
 - `/srv/nazar/.env` — secrets file with auto-generated gateway token
-- `vault` group with nazar + debian users
+- `vault` group with debian user
 - Cron job: auto-commit every 5 minutes
 
 ### Configure secrets
@@ -412,7 +403,7 @@ docker compose exec nazar-gateway ls /vault/
 # Check git sync infrastructure
 git -C /srv/nazar/vault log --oneline -3
 ls /srv/nazar/vault.git/hooks/post-receive
-crontab -u nazar -l | grep vault-auto-commit
+crontab -u debian -l | grep vault-auto-commit
 ```
 
 ### Device pairing (first browser access)
@@ -444,7 +435,7 @@ This walks through WhatsApp linking, model configuration, and other initial sett
 
 ```bash
 # Clone the vault over Tailscale SSH
-git clone nazar@<tailscale-ip>:/srv/nazar/vault.git ~/vault
+git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/vault
 
 # Open in Obsidian, install Obsidian Git plugin
 # Configure: auto-pull 5 min, auto-push after commit, auto-commit 5 min
@@ -453,7 +444,7 @@ git clone nazar@<tailscale-ip>:/srv/nazar/vault.git ~/vault
 ### Phone Setup (Android)
 
 1. Install Obsidian + Obsidian Git plugin
-2. Configure repository URL: `nazar@<tailscale-ip>:/srv/nazar/vault.git`
+2. Configure repository URL: `debian@<tailscale-ip>:/srv/nazar/vault.git`
 3. Requires Tailscale running on the phone
 4. Set auto-pull and auto-push intervals
 
@@ -469,7 +460,7 @@ If you already have a vault locally:
 ```bash
 cd ~/vault
 git init
-git remote add origin nazar@<tailscale-ip>:/srv/nazar/vault.git
+git remote add origin debian@<tailscale-ip>:/srv/nazar/vault.git
 git add -A
 git commit -m "initial vault"
 git push -u origin main
@@ -478,7 +469,7 @@ git push -u origin main
 **Verify:**
 ```bash
 # After push:
-ssh nazar@<tailscale-ip> "ls /srv/nazar/vault/"
+ssh debian@<tailscale-ip> "ls /srv/nazar/vault/"
 # Should show: 00-inbox, 01-daily-journey, ..., 99-system
 ```
 
@@ -526,7 +517,7 @@ git -C /srv/nazar/vault log --oneline -3
 # Expected: shows commits
 ls /srv/nazar/vault.git/hooks/post-receive
 # Expected: exists and is executable
-crontab -u nazar -l | grep vault-auto-commit
+crontab -u debian -l | grep vault-auto-commit
 # Expected: shows cron entry
 
 # 10. No secrets in vault
@@ -567,7 +558,7 @@ git push
 ### Container can't write to vault
 Fix permissions:
 ```bash
-sudo chown -R nazar:vault /srv/nazar/vault
+sudo chown -R debian:vault /srv/nazar/vault
 sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
 sudo find /srv/nazar/vault -type f -exec chmod 0664 {} +
 ```
@@ -578,9 +569,9 @@ sudo find /srv/nazar/vault -type f -exec chmod 0664 {} +
 
 | Service | Access | URL |
 |---------|--------|-----|
-| SSH | Tailscale | `ssh nazar@<tailscale-ip>` |
+| SSH | Tailscale | `ssh debian@<tailscale-ip>` |
 | Gateway | Tailscale (automatic) | `https://<tailscale-hostname>/` |
-| Vault (git) | Tailscale (SSH) | `git clone nazar@<tailscale-ip>:/srv/nazar/vault.git` |
+| Vault (git) | Tailscale (SSH) | `git clone debian@<tailscale-ip>:/srv/nazar/vault.git` |
 
 | Path | Contents |
 |------|----------|

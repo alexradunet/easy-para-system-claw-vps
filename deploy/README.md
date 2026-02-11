@@ -26,7 +26,7 @@ nano /srv/nazar/.env
 cd /srv/nazar && docker compose restart
 
 # Clone vault on your laptop
-git clone nazar@<tailscale-ip>:/srv/nazar/vault.git ~/vault
+git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/vault
 ```
 
 ## Files
@@ -47,7 +47,7 @@ git clone nazar@<tailscale-ip>:/srv/nazar/vault.git ~/vault
 | Port | Service | Access |
 |------|---------|--------|
 | 443 (HTTPS) | OpenClaw Gateway | `https://<tailscale-hostname>/` (automatic via integrated Tailscale Serve) |
-| 22 (SSH) | Git vault sync | `git clone nazar@<tailscale-ip>:/srv/nazar/vault.git` (Tailscale only) |
+| 22 (SSH) | Git vault sync | `git clone debian@<tailscale-ip>:/srv/nazar/vault.git` (Tailscale only) |
 
 No public ports needed. All access flows through Tailscale.
 

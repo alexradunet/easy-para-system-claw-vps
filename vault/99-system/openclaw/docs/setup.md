@@ -6,7 +6,7 @@ Complete setup instructions for Nazar — your Obsidian-based AI agent.
 
 - OVH VPS (or any Debian server) with Docker installed
 - Tailscale for secure access
-- Obsidian vault synced via Syncthing
+- Obsidian vault synced via Git
 - API keys for your chosen LLM provider(s)
 
 ## Deployment (Docker on VPS)
@@ -27,7 +27,7 @@ sudo bash scripts/setup-vps.sh
 ```
 
 This will:
-- Create `/srv/nazar/{vault,data/openclaw,data/syncthing}`
+- Create `/srv/nazar/{vault,data/openclaw}`
 - Clone OpenClaw source to `/opt/openclaw`
 - Overlay the custom Dockerfile
 - Copy compose + config files
@@ -42,20 +42,18 @@ nano /srv/nazar/.env
 
 Fill in your API keys and WhatsApp number.
 
-### 4. Connect Syncthing
+### 4. Clone vault on your devices
 
-- Access Syncthing UI: `http://<tailscale-ip>:8384`
-- Get the Device ID from the VPS
-- Add the device on your laptop/phone Syncthing
-- Share the vault folder
+```bash
+git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/vault
+```
 
 ### 5. Verify
 
 ```bash
 cd /srv/nazar
-docker compose ps                    # Both containers healthy
-curl -s http://127.0.0.1:18789      # Gateway responds
-curl -s http://127.0.0.1:8384       # Syncthing UI loads
+docker compose ps                    # Container healthy
+curl -sk https://<tailscale-hostname>/  # Gateway responds
 docker compose exec nazar-gateway ls /vault/  # Vault visible
 ```
 
@@ -85,10 +83,6 @@ python3 vault/99-system/openclaw/skills/voice/scripts/voice-cli.py --help
 docker compose logs nazar-gateway
 docker compose restart nazar-gateway
 ```
-
-### Syncthing not syncing
-
-Check firewall rules for ports 22000/tcp, 22000/udp, and 21027/udp.
 
 ### Voice models missing
 

@@ -29,7 +29,7 @@ warn "This will remove public SSH access (port 22)."
 warn "SSH will ONLY work via Tailscale IP: $TS_IP"
 warn ""
 warn "Before proceeding, confirm you can SSH via Tailscale:"
-warn "  ssh nazar@$TS_IP"
+warn "  ssh debian@$TS_IP"
 echo ""
 read -p "Have you confirmed Tailscale SSH works? (yes/no): " CONFIRM
 
@@ -50,7 +50,7 @@ ufw reload
 info "SSH is now Tailscale-only."
 echo ""
 echo "Tailscale IP: $TS_IP"
-echo "SSH command:  ssh nazar@$TS_IP"
+echo "SSH command:  ssh debian@$TS_IP"
 echo ""
 echo "Emergency access: Use your VPS provider's web console (OVH KVM, Hetzner Console)"
 echo "To undo: sudo ufw allow 22/tcp && sudo ufw delete allow in on tailscale0 to any port 22"

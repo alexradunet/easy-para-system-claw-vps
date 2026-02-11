@@ -42,8 +42,8 @@ done
 echo ""
 echo "  ╔═══════════════════════════════════════╗"
 echo "  ║     Nazar VPS Provisioning Script     ║"
-echo "  ║        Debian + Tailscale          ║"
-echo "  ║     OpenClaw + Syncthing Docker       ║"
+echo "  ║        Debian + Tailscale             ║"
+echo "  ║     OpenClaw + Git Vault Sync         ║"
 echo "  ╚═══════════════════════════════════════╝"
 echo ""
 
@@ -57,32 +57,34 @@ apt-get install -y -qq curl git > /dev/null
 info "System updated."
 
 # ─────────────────────────────────────────────
-header "Phase 2/8: Create Service User"
+header "Phase 2/8: Verify Default User"
 # ─────────────────────────────────────────────
-if id "nazar" &>/dev/null; then
-    info "User 'nazar' already exists."
+if id "debian" &>/dev/null; then
+    info "User 'debian' exists."
 else
-    info "Creating user 'nazar'..."
-    adduser --disabled-password --gecos "Nazar Service" nazar
-    usermod -aG sudo nazar
-    echo "nazar ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/nazar
-    chmod 0440 /etc/sudoers.d/nazar
+    error "Default 'debian' user not found. This script expects the cloud provider's default user."
+fi
 
-    if [ -f /root/.ssh/authorized_keys ]; then
-        mkdir -p /home/nazar/.ssh
-        cp /root/.ssh/authorized_keys /home/nazar/.ssh/authorized_keys
-        chown -R nazar:nazar /home/nazar/.ssh
-        chmod 700 /home/nazar/.ssh
-        chmod 600 /home/nazar/.ssh/authorized_keys
-        info "Copied root SSH keys to nazar."
-    else
-        warn "No root SSH keys found. Add keys manually: /home/nazar/.ssh/authorized_keys"
-    fi
+# Ensure debian has passwordless sudo
+if ! sudo -u debian sudo -n true 2>/dev/null; then
+    info "Granting debian passwordless sudo..."
+    echo "debian ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/debian
+    chmod 0440 /etc/sudoers.d/debian
+fi
+
+# Copy root SSH keys if debian doesn't have any
+if [ -f /root/.ssh/authorized_keys ] && [ ! -f /home/debian/.ssh/authorized_keys ]; then
+    mkdir -p /home/debian/.ssh
+    cp /root/.ssh/authorized_keys /home/debian/.ssh/authorized_keys
+    chown -R debian:debian /home/debian/.ssh
+    chmod 700 /home/debian/.ssh
+    chmod 600 /home/debian/.ssh/authorized_keys
+    info "Copied root SSH keys to debian."
 fi
 
 # Verify
-su - nazar -c "sudo -n whoami" | grep -q root || error "nazar user cannot sudo. Fix before continuing."
-info "User 'nazar' verified."
+su - debian -c "sudo -n whoami" | grep -q root || error "debian user cannot sudo. Fix before continuing."
+info "User 'debian' verified."
 
 # ─────────────────────────────────────────────
 header "Phase 3/8: Harden SSH + Firewall + Fail2Ban"
@@ -102,7 +104,7 @@ KbdInteractiveAuthentication no
 X11Forwarding no
 AllowAgentForwarding no
 AllowTcpForwarding yes
-AllowUsers nazar
+AllowUsers debian
 EOF
 sshd -t || error "SSH config invalid!"
 
@@ -112,9 +114,6 @@ apt-get install -y -qq ufw > /dev/null
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp comment "SSH"
-ufw allow 22000/tcp comment "Syncthing-TCP"
-ufw allow 22000/udp comment "Syncthing-UDP"
-ufw allow 21027/udp comment "Syncthing-Discovery"
 ufw --force enable
 systemctl restart sshd
 info "SSH + firewall configured."
@@ -192,7 +191,7 @@ header "Phase 5/8: Lock SSH to Tailscale"
 # ─────────────────────────────────────────────
 echo ""
 warn "Before locking SSH to Tailscale, test from another terminal:"
-warn "  ssh nazar@$TS_IP"
+warn "  ssh debian@$TS_IP"
 echo ""
 read -p "Can you SSH via Tailscale? (yes/no): " CONFIRM_TS
 
@@ -228,13 +227,13 @@ else
     systemctl enable docker
     info "Docker installed."
 fi
-usermod -aG docker nazar 2>/dev/null || true
-info "User 'nazar' added to docker group."
+usermod -aG docker debian 2>/dev/null || true
+info "User 'debian' added to docker group."
 
-# Add openclaw CLI alias for nazar user
-if ! grep -q 'alias openclaw=' /home/nazar/.bashrc 2>/dev/null; then
-    echo 'alias openclaw="sudo docker exec -it nazar-gateway node dist/index.js"' >> /home/nazar/.bashrc
-    info "Added 'openclaw' CLI alias for nazar user."
+# Add openclaw CLI alias for debian user
+if ! grep -q 'alias openclaw=' /home/debian/.bashrc 2>/dev/null; then
+    echo 'alias openclaw="sudo docker exec -it nazar-gateway node dist/index.js"' >> /home/debian/.bashrc
+    info "Added 'openclaw' CLI alias for debian user."
 fi
 
 # Verify
@@ -248,7 +247,7 @@ NAZAR_ROOT="/srv/nazar"
 OPENCLAW_SRC="/opt/openclaw"
 
 info "Creating directory structure..."
-mkdir -p "$NAZAR_ROOT"/{vault,data/openclaw,data/syncthing}
+mkdir -p "$NAZAR_ROOT"/{vault,data/openclaw,scripts}
 chown -R 1000:1000 "$NAZAR_ROOT"
 
 # Clone OpenClaw source
@@ -262,7 +261,7 @@ fi
 # Find deploy repo
 if [ -z "$DEPLOY_REPO" ]; then
     # Try common locations
-    for candidate in "$SCRIPT_DIR/.." /srv/nazar/deploy /home/nazar/deploy; do
+    for candidate in "$SCRIPT_DIR/.." /srv/nazar/deploy /home/debian/deploy; do
         if [ -f "$candidate/docker-compose.yml" ]; then
             DEPLOY_REPO="$candidate"
             break
@@ -291,7 +290,7 @@ else
     else
         info ".env already exists, keeping it."
     fi
-    chown nazar:nazar "$NAZAR_ROOT/.env"
+    chown debian:debian "$NAZAR_ROOT/.env"
 
     # Add swap if low memory (< 2GB)
     TOTAL_MEM=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
@@ -314,15 +313,6 @@ else
 fi
 
 # ─────────────────────────────────────────────
-header "Phase 8/8: Expose Syncthing UI via Tailscale"
-# ─────────────────────────────────────────────
-info "Setting up tailscale serve proxy for Syncthing UI..."
-info "Syncthing UI is bound to 127.0.0.1 — tailscale serve proxies tailnet traffic to localhost."
-info "Note: Gateway proxy is automatic (integrated tailscale serve mode in docker-compose)."
-tailscale serve --bg --tcp 8384 tcp://127.0.0.1:8384 2>/dev/null || warn "Failed to set up Syncthing UI proxy"
-info "Syncthing UI proxy configured."
-
-# ─────────────────────────────────────────────
 header "Provisioning Complete!"
 # ─────────────────────────────────────────────
 
@@ -333,17 +323,15 @@ echo "  ┌───────────────────────
 echo "  │           Access Information               │"
 echo "  ├───────────────────────────────────────────┤"
 TS_HOSTNAME=$(tailscale status --json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['Self']['DNSName'].rstrip('.'))" 2>/dev/null || echo "<tailscale-hostname>")
-echo "  │  SSH:        ssh nazar@$TS_IP"
+echo "  │  SSH:        ssh debian@$TS_IP"
 echo "  │  Gateway:    https://$TS_HOSTNAME/"
-echo "  │  Syncthing:  http://$TS_IP:8384"
 echo "  ├───────────────────────────────────────────┤"
 echo "  │           Next Steps                       │"
 echo "  ├───────────────────────────────────────────┤"
 echo "  │  1. Edit secrets:  nano /srv/nazar/.env    │"
 echo "  │  2. Restart:  cd /srv/nazar &&             │"
 echo "  │               docker compose restart       │"
-echo "  │  3. Connect Syncthing to sync vault        │"
-echo "  │  4. Run audit: bash audit-vps.sh           │"
+echo "  │  3. Run audit: bash audit-vps.sh           │"
 echo "  └───────────────────────────────────────────┘"
 echo ""
 echo "Firewall status:"

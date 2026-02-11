@@ -1,6 +1,6 @@
 #!/bin/bash
 # secure-vps.sh — Harden a fresh Debian VPS
-# Run as root or with sudo. Requires an SSH key already configured for the nazar user.
+# Run as root or with sudo. Uses the default debian user (no secondary user created).
 set -euo pipefail
 
 RED='\033[0;31m'
@@ -20,27 +20,18 @@ echo "  Debian VPS Security Hardening"
 echo "========================================="
 echo ""
 
-# --- Phase 1: Create nazar user ---
-if id "nazar" &>/dev/null; then
-    info "User 'nazar' already exists, skipping."
+# --- Phase 1: Verify debian user ---
+if id "debian" &>/dev/null; then
+    info "User 'debian' exists."
 else
-    info "Creating user 'nazar'..."
-    adduser --disabled-password --gecos "Nazar Service" nazar
-    usermod -aG sudo nazar
-    echo "nazar ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/nazar
-    chmod 0440 /etc/sudoers.d/nazar
+    error "Default 'debian' user not found. This script expects the cloud provider's default user."
+fi
 
-    # Copy root's SSH keys
-    if [ -f /root/.ssh/authorized_keys ]; then
-        mkdir -p /home/nazar/.ssh
-        cp /root/.ssh/authorized_keys /home/nazar/.ssh/authorized_keys
-        chown -R nazar:nazar /home/nazar/.ssh
-        chmod 700 /home/nazar/.ssh
-        chmod 600 /home/nazar/.ssh/authorized_keys
-        info "Copied root SSH keys to nazar user."
-    else
-        warn "No /root/.ssh/authorized_keys found. You must manually add SSH keys for the nazar user."
-    fi
+# Ensure debian has passwordless sudo
+if ! sudo -u debian sudo -n true 2>/dev/null; then
+    info "Granting debian passwordless sudo..."
+    echo "debian ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/debian
+    chmod 0440 /etc/sudoers.d/debian
 fi
 
 # --- Phase 2: Harden SSH ---
@@ -59,7 +50,7 @@ KbdInteractiveAuthentication no
 X11Forwarding no
 AllowAgentForwarding no
 AllowTcpForwarding yes
-AllowUsers nazar
+AllowUsers debian
 EOF
 
 sshd -t || error "SSH config invalid! Restoring backup."
@@ -73,9 +64,6 @@ apt-get install -y -qq ufw > /dev/null
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp comment "SSH"
-ufw allow 22000/tcp comment "Syncthing-TCP"
-ufw allow 22000/udp comment "Syncthing-UDP"
-ufw allow 21027/udp comment "Syncthing-Discovery"
 ufw --force enable
 
 # Now safe to restart SSH
@@ -137,7 +125,7 @@ echo -e "  ${GREEN}VPS hardening complete!${NC}"
 echo "========================================="
 echo ""
 echo "Next steps:"
-echo "  1. Verify you can SSH as nazar: ssh nazar@<vps-ip>"
+echo "  1. Verify you can SSH as debian: ssh debian@<vps-ip>"
 echo "  2. Install Tailscale:  curl -fsSL https://tailscale.com/install.sh | sh"
 echo "  3. Start Tailscale:    sudo tailscale up"
 echo "  4. Install Docker:     bash install-docker.sh"

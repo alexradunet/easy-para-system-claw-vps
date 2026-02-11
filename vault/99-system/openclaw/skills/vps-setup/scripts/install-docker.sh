@@ -30,10 +30,10 @@ echo \
 apt-get update -qq
 apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin > /dev/null
 
-# Add nazar user to docker group if user exists
-if id "nazar" &>/dev/null; then
-    usermod -aG docker nazar
-    info "Added 'nazar' to docker group. Log out and back in for it to take effect."
+# Add debian user to docker group if user exists
+if id "debian" &>/dev/null; then
+    usermod -aG docker debian
+    info "Added 'debian' to docker group. Log out and back in for it to take effect."
 fi
 
 # Enable Docker on boot
@@ -45,4 +45,4 @@ docker compose version
 
 echo ""
 echo "Verify with:  docker run --rm hello-world"
-echo "Note: Log out and back in first if using the 'nazar' user."
+echo "Note: Log out and back in first if using the 'debian' user."

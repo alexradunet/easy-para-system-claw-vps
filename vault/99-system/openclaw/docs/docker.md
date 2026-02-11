@@ -1,15 +1,15 @@
 # Docker Deployment
 
-Run Nazar as a two-container Docker stack on your VPS.
+Run Nazar as a Docker container on your VPS.
 
 ## Architecture
 
-Two containers sharing one vault volume:
+One container with Git-based vault sync:
 
 1. **nazar-gateway** — OpenClaw + voice tools, vault at `/vault`
-2. **nazar-syncthing** — Syncthing, syncs vault with your devices
+2. **vault.git** — Bare Git repo served over SSH for vault synchronization
 
-Both containers are defined in `deploy/docker-compose.yml`.
+Defined in `deploy/docker-compose.yml`.
 
 ## Quick Start
 
@@ -49,25 +49,22 @@ The custom `Dockerfile.nazar` extends the official OpenClaw build with:
 /srv/nazar/
 ├── docker-compose.yml
 ├── .env                  ← Secrets (never committed)
-├── vault/                ← Obsidian vault (synced via Syncthing)
+├── vault/                ← Obsidian vault (git working copy)
 │   ├── 00-inbox/
 │   ├── 01-daily-journey/
 │   ├── ...
 │   └── 99-system/
+├── vault.git/            ← Bare Git repo (push/pull target)
 └── data/
-    ├── openclaw/         ← OpenClaw config + state
-    └── syncthing/        ← Syncthing config
+    └── openclaw/         ← OpenClaw config + state
 ```
 
 ## Ports
 
 | Port | Service | Binding |
 |------|---------|---------|
-| 18789 | OpenClaw Gateway | 127.0.0.1 (Tailscale only) |
-| 8384 | Syncthing UI | 127.0.0.1 (Tailscale only) |
-| 22000/tcp | Syncthing sync | 0.0.0.0 |
-| 22000/udp | Syncthing sync | 0.0.0.0 |
-| 21027/udp | Syncthing discovery | 0.0.0.0 |
+| 443 (HTTPS) | OpenClaw Gateway | loopback -> Tailscale Serve |
+| 22 (SSH) | Git vault sync | `tailscale0` only |
 
 ## Management
 
@@ -80,7 +77,6 @@ docker compose ps
 # View logs
 docker compose logs -f
 docker compose logs -f nazar-gateway
-docker compose logs -f nazar-syncthing
 
 # Restart
 docker compose restart
@@ -118,9 +114,6 @@ deploy:
     limits:
       memory: 2G
 ```
-
-### Syncthing not syncing
-Check firewall for ports 22000 and 21027.
 
 ---
 

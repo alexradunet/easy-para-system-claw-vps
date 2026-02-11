@@ -43,6 +43,6 @@ else
     echo "Tailscale IP: $TS_IP"
     echo ""
     echo "Next steps:"
-    echo "  1. Verify SSH via Tailscale: ssh nazar@$TS_IP"
+    echo "  1. Verify SSH via Tailscale: ssh debian@$TS_IP"
     echo "  2. Then lock SSH to Tailscale: bash lock-ssh-to-tailscale.sh"
 fi

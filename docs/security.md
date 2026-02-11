@@ -55,7 +55,7 @@ Defense-in-depth approach: multiple independent layers, each protecting against 
 **SSH:**
 - Key-only authentication (passwords disabled)
 - Root login disabled
-- Only the `nazar` user is allowed to SSH in (`AllowUsers nazar`). The default cloud provider user (e.g., `debian`) is not permitted after setup.
+- Only the `debian` user is allowed to SSH in (`AllowUsers debian`).
 - TCP forwarding enabled (required for VSCode Remote SSH)
 - Max 3 auth attempts per connection
 - Fail2Ban bans IPs after 3 failed attempts (1 hour ban)
@@ -67,7 +67,7 @@ Defense-in-depth approach: multiple independent layers, each protecting against 
 
 **Vault Git Access:**
 - Authenticated via SSH keys (same as SSH login)
-- Only `nazar` user can push/pull
+- Only `debian` user can push/pull
 - `vault` group with setgid ensures correct file permissions
 
 ### 3. Container Isolation
@@ -157,7 +157,7 @@ sudo bash vault/99-system/openclaw/skills/vps-setup/scripts/audit-vps.sh
 Checks:
 1. Root login disabled
 2. Password auth disabled
-3. SSH restricted to `nazar` user
+3. SSH restricted to `debian` user
 4. UFW active with correct rules
 5. No Syncthing ports open (legacy)
 6. Gateway not publicly exposed
@@ -174,7 +174,7 @@ Checks:
 If Tailscale goes down and you're locked out of SSH:
 
 1. Use your VPS provider's web console (OVH: KVM, Hetzner: Console)
-2. Log in as `nazar`
+2. Log in as `debian`
 3. Re-enable public SSH: `sudo ufw allow 22/tcp`
 4. Fix Tailscale: `sudo tailscale up`
 5. Re-lock SSH: `sudo bash lock-ssh-to-tailscale.sh`

@@ -10,18 +10,17 @@ echo "=== Nazar VPS Setup ==="
 # 1. Create directory structure
 echo "Creating directory structure..."
 mkdir -p "$NAZAR_ROOT"/{vault,data/openclaw,scripts}
-chown -R nazar:nazar "$NAZAR_ROOT"
+chown -R debian:debian "$NAZAR_ROOT"
 
-# 2. Set up vault group (shared access: nazar uid 1001 + container uid 1000)
+# 2. Set up vault group (shared access: debian user + container uid 1000)
 echo "Setting up vault group..."
 if ! getent group vault >/dev/null 2>&1; then
     groupadd vault
 fi
-usermod -aG vault nazar 2>/dev/null || true
 usermod -aG vault debian 2>/dev/null || true
 
 # Set vault ownership and setgid (new files inherit group)
-chown -R nazar:vault "$NAZAR_ROOT/vault"
+chown -R debian:vault "$NAZAR_ROOT/vault"
 chmod 2775 "$NAZAR_ROOT/vault"
 find "$NAZAR_ROOT/vault" -type d -exec chmod 2775 {} +
 find "$NAZAR_ROOT/vault" -type f -exec chmod 0664 {} +
@@ -47,7 +46,7 @@ fi
 if [ ! -d "$NAZAR_ROOT/vault.git" ]; then
     echo "Creating bare repo..."
     git init --bare --shared=group "$NAZAR_ROOT/vault.git"
-    chown -R nazar:vault "$NAZAR_ROOT/vault.git"
+    chown -R debian:vault "$NAZAR_ROOT/vault.git"
 
     # Push vault contents to bare repo
     cd "$NAZAR_ROOT/vault"
@@ -61,7 +60,7 @@ if [ ! -d "$NAZAR_ROOT/vault.git" ]; then
     # Install post-receive hook
     cp "$DEPLOY_DIR/scripts/vault-post-receive-hook" "$NAZAR_ROOT/vault.git/hooks/post-receive"
     chmod +x "$NAZAR_ROOT/vault.git/hooks/post-receive"
-    chown nazar:vault "$NAZAR_ROOT/vault.git/hooks/post-receive"
+    chown debian:vault "$NAZAR_ROOT/vault.git/hooks/post-receive"
     echo "Bare repo created with post-receive hook"
 else
     echo "Bare repo already exists"
@@ -71,11 +70,11 @@ fi
 echo "Installing auto-commit script..."
 cp "$DEPLOY_DIR/scripts/vault-auto-commit.sh" "$NAZAR_ROOT/scripts/vault-auto-commit.sh"
 chmod +x "$NAZAR_ROOT/scripts/vault-auto-commit.sh"
-chown nazar:nazar "$NAZAR_ROOT/scripts/vault-auto-commit.sh"
+chown debian:debian "$NAZAR_ROOT/scripts/vault-auto-commit.sh"
 
-# Install crontab for nazar (preserving existing entries)
+# Install crontab for debian user (preserving existing entries)
 CRON_LINE="*/5 * * * * /srv/nazar/scripts/vault-auto-commit.sh"
-(crontab -u nazar -l 2>/dev/null | grep -v vault-auto-commit; echo "$CRON_LINE") | crontab -u nazar -
+(crontab -u debian -l 2>/dev/null | grep -v vault-auto-commit; echo "$CRON_LINE") | crontab -u debian -
 echo "Cron installed: vault auto-commit every 5 minutes"
 
 # 6. Clone OpenClaw source (if not already cloned)
@@ -106,7 +105,7 @@ if [ ! -f "$NAZAR_ROOT/.env" ]; then
 else
     echo ".env already exists, skipping."
 fi
-chown nazar:nazar "$NAZAR_ROOT/.env"
+chown debian:debian "$NAZAR_ROOT/.env"
 
 # 10. Build and start
 echo "Building and starting containers..."
@@ -120,10 +119,10 @@ docker compose ps
 echo ""
 echo "=== Setup Complete ==="
 echo "Gateway: https://<tailscale-hostname>/ (access via Tailscale)"
-echo "Vault:   git clone nazar@<tailscale-ip>:/srv/nazar/vault.git"
+echo "Vault:   git clone debian@<tailscale-ip>:/srv/nazar/vault.git"
 echo "Config:  $NAZAR_ROOT/.env"
 echo ""
 echo "Next steps:"
 echo "  1. Edit $NAZAR_ROOT/.env with your API keys"
-echo "  2. Clone vault on your devices: git clone nazar@<tailscale-ip>:/srv/nazar/vault.git"
+echo "  2. Clone vault on your devices: git clone debian@<tailscale-ip>:/srv/nazar/vault.git"
 echo "  3. docker compose restart (after editing .env)"

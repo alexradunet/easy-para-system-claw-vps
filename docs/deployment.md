@@ -35,7 +35,7 @@ bash /srv/nazar/deploy/../vault/99-system/openclaw/skills/vps-setup/scripts/prov
 ```
 
 This runs all phases:
-- Creates `nazar` user with sudo + SSH keys
+- Uses `debian` user (pre-existing) with sudo + SSH keys
 - Hardens SSH (key-only, no root)
 - Configures firewall (UFW)
 - Installs Fail2Ban + unattended upgrades
@@ -50,7 +50,7 @@ This runs all phases:
 ### 3. Configure secrets
 
 ```bash
-ssh nazar@<tailscale-ip>
+ssh debian@<tailscale-ip>
 nano /srv/nazar/.env
 ```
 
@@ -81,7 +81,7 @@ bash install-tailscale.sh
 ### 3. Lock SSH to Tailscale
 
 ```bash
-# First verify: ssh nazar@<tailscale-ip>
+# First verify: ssh debian@<tailscale-ip>
 bash lock-ssh-to-tailscale.sh
 ```
 
@@ -160,7 +160,7 @@ Build takes 10-15 minutes on a 2-core VPS. The image is ~3GB due to voice models
 | Port | Service | Binding | Access |
 |------|---------|---------|--------|
 | 443 (HTTPS) | OpenClaw Gateway | loopback -> Tailscale Serve | `https://<tailscale-hostname>/` (automatic) |
-| 22 (SSH) | Git vault sync | `tailscale0` only | `git clone nazar@<tailscale-ip>:/srv/nazar/vault.git` |
+| 22 (SSH) | Git vault sync | `tailscale0` only | `git clone debian@<tailscale-ip>:/srv/nazar/vault.git` |
 
 No public ports are needed. All access flows through Tailscale.
 
@@ -230,7 +230,7 @@ docker compose exec nazar-gateway ls /vault/          # Vault folders visible
 docker compose exec nazar-gateway node -e "console.log('ok')"  # Node works
 git -C /srv/nazar/vault log --oneline -5             # Git history exists
 ls /srv/nazar/vault.git/hooks/post-receive           # Hook installed
-crontab -u nazar -l | grep vault-auto-commit         # Cron active
+crontab -u debian -l | grep vault-auto-commit         # Cron active
 bash audit-vps.sh                                    # All checks pass
 ```
 

@@ -36,11 +36,11 @@ docker compose restart nazar-gateway
 
 **Fix:**
 1. Use your VPS provider's web console (OVH KVM, Hetzner Console)
-2. Log in as `nazar`
+2. Log in as `debian`
 3. Re-enable public SSH: `sudo ufw allow 22/tcp`
-4. SSH in normally: `ssh nazar@<public-ip>`
+4. SSH in normally: `ssh debian@<public-ip>`
 5. Fix Tailscale: `sudo tailscale up`
-6. Verify Tailscale SSH: `ssh nazar@<tailscale-ip>` (from another terminal)
+6. Verify Tailscale SSH: `ssh debian@<tailscale-ip>` (from another terminal)
 7. Re-lock: `sudo bash lock-ssh-to-tailscale.sh`
 
 ### Can't reach gateway (container running)
@@ -144,7 +144,7 @@ docker compose build
 **Fix:**
 ```bash
 # Ensure vault group permissions are correct
-sudo chown -R nazar:vault /srv/nazar/vault
+sudo chown -R debian:vault /srv/nazar/vault
 sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
 sudo find /srv/nazar/vault -type f -exec chmod 0664 {} +
 ```
@@ -193,7 +193,7 @@ git push
 git -C /srv/nazar/vault status
 
 # Is the cron running?
-crontab -u nazar -l | grep vault-auto-commit
+crontab -u debian -l | grep vault-auto-commit
 
 # Check the sync log
 tail -20 /srv/nazar/data/git-sync.log
@@ -206,7 +206,7 @@ sudo bash /srv/nazar/deploy/scripts/setup-vps.sh
 
 Or manually trigger:
 ```bash
-sudo -u nazar /srv/nazar/scripts/vault-auto-commit.sh
+sudo -u debian /srv/nazar/scripts/vault-auto-commit.sh
 ```
 
 ### Post-receive hook not updating working copy
@@ -226,7 +226,7 @@ ls -la /srv/nazar/vault.git/hooks/post-receive
 ```bash
 sudo cp /srv/nazar/deploy/scripts/vault-post-receive-hook /srv/nazar/vault.git/hooks/post-receive
 sudo chmod +x /srv/nazar/vault.git/hooks/post-receive
-sudo chown nazar:vault /srv/nazar/vault.git/hooks/post-receive
+sudo chown debian:vault /srv/nazar/vault.git/hooks/post-receive
 ```
 
 ### Permission errors in vault
@@ -236,7 +236,7 @@ sudo chown nazar:vault /srv/nazar/vault.git/hooks/post-receive
 **Fix:**
 ```bash
 # Ensure vault group ownership and setgid
-sudo chown -R nazar:vault /srv/nazar/vault /srv/nazar/vault.git
+sudo chown -R debian:vault /srv/nazar/vault /srv/nazar/vault.git
 sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
 sudo find /srv/nazar/vault.git -type d -exec chmod 2775 {} +
 
