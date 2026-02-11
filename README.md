@@ -14,7 +14,7 @@ The fastest way to get started is using **Claude Code** or **Kimi Code** directl
 ssh root@<your-vps-ip>
 
 # 3. Run the bootstrap script
-curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/refs/heads/master/bootstrap/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/alexradunet/second-brain-stack/main/bootstrap/bootstrap.sh | bash
 
 # 4. Follow the instructions to launch your AI assistant
 #    The AI will guide you through the complete setup interactively!
@@ -29,7 +29,7 @@ curl -fsSL https://claude.ai/install.sh | sh  # or install Kimi Code
 
 # Clone this repo
 cd ~ && mkdir -p nazar_deploy && cd nazar_deploy
-git clone https://github.com/alexradunet/easy-para-system-claw-vps.git .
+git clone https://github.com/alexradunet/second-brain-stack.git .
 
 # Launch the AI assistant and ask for guidance
 claude

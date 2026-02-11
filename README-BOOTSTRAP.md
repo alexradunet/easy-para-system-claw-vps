@@ -43,7 +43,7 @@ cd ~
 mkdir -p nazar_deploy
 cd nazar_deploy
 # Replace <your-username> with the GitHub username that owns the repo
-git clone https://github.com/<your-username>/easy-para-system-claw-vps.git .
+git clone https://github.com/<your-username>/second-brain-stack.git .
 ```
 
 ### Step 4: Launch the AI assistant
