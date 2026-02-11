@@ -242,9 +242,89 @@ If you discover a security vulnerability:
 
 **Bottom line**: The direct version has **comparable security** with **simpler auditing**.
 
+## Optional Security Enhancements
+
+Run `sudo bash system/scripts/setup-all-security.sh` for interactive hardening:
+
+### 1. Audit Logging
+Tracks all file changes, privilege escalations, and access attempts.
+```bash
+sudo bash system/scripts/setup-audit.sh
+```
+**Features:**
+- Monitor vault modifications
+- Track SSH key changes
+- Log privilege escalation attempts
+- Command: `nazar-check-audit`
+
+### 2. File Integrity Monitoring (AIDE)
+Detects unauthorized file modifications.
+```bash
+sudo bash system/scripts/setup-integrity.sh
+```
+**Features:**
+- Baseline of critical system files
+- Daily automated checks
+- Alerts on changes
+- Command: `nazar-check-integrity`
+
+### 3. Egress Firewall
+Blocks unwanted outbound connections to prevent data exfiltration.
+```bash
+sudo bash system/scripts/setup-egress-firewall.sh
+```
+**Features:**
+- Block all outbound except HTTPS, DNS, Tailscale
+- Prevents C2 communication if compromised
+- **Warning:** Test thoroughly, may break some features
+
+### 4. Canary Tokens
+Fake sensitive files that trigger alerts if accessed.
+```bash
+sudo bash system/scripts/setup-canary.sh
+```
+**Features:**
+- Fake SSH keys, AWS credentials, API keys
+- Automatic audit logging on access
+- Potential automatic lockdown
+- Command: `nazar-check-canary`
+
+### 5. Encrypted Backups
+GPG-encrypted vault backups with automatic rotation.
+```bash
+sudo bash system/scripts/setup-backup.sh
+```
+**Features:**
+- 4096-bit RSA encryption
+- Automatic daily backups
+- 30-day retention
+- Commands: `nazar-backup`, `nazar-restore`
+
+### 6. Automatic Security Response
+Monitors and responds to security events automatically.
+```bash
+sudo bash system/scripts/setup-auto-response.sh
+```
+**Features:**
+- Real-time log monitoring
+- Automatic IP banning
+- Critical alert escalation
+- Service lockdown on breach detection
+
+## Security Level Comparison
+
+| Level | Configuration | Use Case |
+|-------|--------------|----------|
+| **Basic** | Bootstrap defaults only | Personal use, low threat |
+| **Standard** | + Audit + Backups + Canary | Important personal data |
+| **High** | + Integrity + Auto-response | Sensitive information |
+| **Maximum** | + Egress firewall | High-value target, journalists, activists |
+
 ## References
 
 - [Tailscale Security](https://tailscale.com/security)
 - [Syncthing Security](https://docs.syncthing.net/users/security.html)
 - [Systemd Service Security](https://www.freedesktop.org/software/systemd/man/systemd.exec.html#Security)
 - [Debian Security Manual](https://www.debian.org/doc/manuals/securing-debian-howto/)
+- [AIDE Documentation](https://aide.github.io/)
+- [Auditd Best Practices](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/security_hardening/auditing-the-system_security-hardening)
