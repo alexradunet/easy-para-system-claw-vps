@@ -30,34 +30,6 @@ docker compose restart nazar-gateway
 
 ---
 
-### Can't reach Syncthing UI via Tailscale IP
-
-**Symptom:** `http://<tailscale-ip>:8384` times out or refuses connection, but `curl http://127.0.0.1:8384` works locally on the VPS.
-
-**Cause:** Syncthing UI is bound to `127.0.0.1` in `docker-compose.yml` (by design — no public exposure). Tailscale traffic arrives on the `tailscale0` interface, not the loopback, so `127.0.0.1`-bound ports reject it.
-
-**Fix:** Use `tailscale serve` to proxy Tailscale traffic to localhost:
-
-```bash
-sudo tailscale serve --bg --tcp 8384 tcp://127.0.0.1:8384
-```
-
-After this, Syncthing UI is reachable at `http://<tailscale-ip>:8384` from your tailnet.
-
-To check active proxies:
-```bash
-tailscale serve status
-```
-
-To remove the proxy:
-```bash
-sudo tailscale serve --tcp=8384 off
-```
-
-**Note:** `tailscale serve` proxies persist across reboots as long as Tailscale is running. No UFW rules are needed — traffic stays within the Tailscale tunnel.
-
----
-
 ### Locked out of SSH (Tailscale down)
 
 **Symptom:** Can't SSH via Tailscale IP, Tailscale appears down on VPS.
@@ -71,34 +43,27 @@ sudo tailscale serve --tcp=8384 off
 6. Verify Tailscale SSH: `ssh nazar@<tailscale-ip>` (from another terminal)
 7. Re-lock: `sudo bash lock-ssh-to-tailscale.sh`
 
-### Can't reach gateway or Syncthing UI (containers running)
+### Can't reach gateway (container running)
 
-**Symptom:** `https://<tailscale-hostname>/` or `http://<tailscale-ip>:8384` not loading, but containers are running.
+**Symptom:** `https://<tailscale-hostname>/` not loading, but container is running.
 
 **Check:**
 ```bash
 # Is Tailscale running?
 tailscale status
 
-# Are containers running?
+# Is the container running?
 docker compose ps
-
-# Is Syncthing UI port bound correctly?
-ss -tlnp | grep 8384
-# Should show 127.0.0.1 — this is correct and expected
 
 # Is the gateway container using host networking?
 docker inspect nazar-gateway --format='{{.HostConfig.NetworkMode}}'
 # Expected: host
-
-# Is the manual tailscale serve proxy active for Syncthing UI?
-tailscale serve status
 ```
 
-**Fix:**
-- **Gateway:** The gateway manages its own Tailscale Serve proxy. Restart the container: `docker compose restart nazar-gateway`
-- **Syncthing UI:** If `tailscale serve status` shows no proxy for port 8384, set it up: `sudo tailscale serve --bg --tcp 8384 tcp://127.0.0.1:8384`
-
+**Fix:** The gateway manages its own Tailscale Serve proxy. Restart the container:
+```bash
+docker compose restart nazar-gateway
+```
 
 ### Control UI shows "pairing required"
 
@@ -132,13 +97,12 @@ sudo sshd -t && sudo systemctl restart sshd
 
 ## Container Issues
 
-### Containers won't start
+### Container won't start
 
 **Check logs:**
 ```bash
 cd /srv/nazar
 docker compose logs nazar-gateway
-docker compose logs nazar-syncthing
 ```
 
 **Common causes:**
@@ -179,42 +143,106 @@ docker compose build
 
 **Fix:**
 ```bash
-sudo chown -R 1000:1000 /srv/nazar/vault /srv/nazar/data
+# Ensure vault group permissions are correct
+sudo chown -R nazar:vault /srv/nazar/vault
+sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
+sudo find /srv/nazar/vault -type f -exec chmod 0664 {} +
 ```
 
-Containers run as uid 1000 — the vault must be owned by that uid.
+The container runs as uid 1000 — which must be a member of the `vault` group. The setgid bit on directories ensures new files inherit the group.
 
-## Syncthing Issues
+## Vault Sync Issues
 
-### Devices not connecting
+### Git push rejected
 
+**Symptom:** `git push` to VPS fails with "non-fast-forward" error.
+
+**Cause:** The auto-commit cron on the VPS committed agent writes, creating commits your local branch doesn't have.
+
+**Fix:**
 ```bash
-# Check firewall
-sudo ufw status | grep -E "22000|21027"
-
-# Check Syncthing logs
-docker compose logs nazar-syncthing | tail -30
-
-# Verify Syncthing is listening
-ss -tulnp | grep -E "22000|21027"
+# Pull first, then push
+git pull --rebase origin main
+git push origin main
 ```
 
-If using a cloud VPS, also check the provider's firewall/security group settings (separate from UFW).
+### Merge conflicts after pull
 
-### Sync conflicts
+**Symptom:** `git pull` shows merge conflicts.
 
+**Cause:** Both you and the agent edited the same file in the same area.
+
+**Fix:**
 ```bash
-# Find conflict files
-find /srv/nazar/vault -name "*.sync-conflict-*"
+# See conflicted files
+git status
 
-# Resolve: keep the version you want, delete the conflict file
+# Resolve conflicts in your editor, then:
+git add <resolved-files>
+git commit
+git push
 ```
 
-### Vault empty after setup
+### Agent writes not appearing
 
-Syncthing needs time to complete initial sync. Check progress in the UI at `http://<tailscale-ip>:8384`.
+**Symptom:** The agent made changes to vault files but they don't show up when you `git pull`.
 
-If the folder shows "Unshared" — you need to accept the folder share on the VPS side.
+**Check:**
+```bash
+# On VPS: are there uncommitted changes?
+git -C /srv/nazar/vault status
+
+# Is the cron running?
+crontab -u nazar -l | grep vault-auto-commit
+
+# Check the sync log
+tail -20 /srv/nazar/data/git-sync.log
+```
+
+**Fix:** If the cron isn't running, reinstall it:
+```bash
+sudo bash /srv/nazar/deploy/scripts/setup-vps.sh
+```
+
+Or manually trigger:
+```bash
+sudo -u nazar /srv/nazar/scripts/vault-auto-commit.sh
+```
+
+### Post-receive hook not updating working copy
+
+**Symptom:** You pushed to `vault.git` but `/srv/nazar/vault/` doesn't reflect the changes.
+
+**Check:**
+```bash
+# Check the sync log
+tail -20 /srv/nazar/data/git-sync.log
+
+# Is the hook executable?
+ls -la /srv/nazar/vault.git/hooks/post-receive
+```
+
+**Fix:** Reinstall the hook:
+```bash
+sudo cp /srv/nazar/deploy/scripts/vault-post-receive-hook /srv/nazar/vault.git/hooks/post-receive
+sudo chmod +x /srv/nazar/vault.git/hooks/post-receive
+sudo chown nazar:vault /srv/nazar/vault.git/hooks/post-receive
+```
+
+### Permission errors in vault
+
+**Symptom:** Git operations fail with permission errors.
+
+**Fix:**
+```bash
+# Ensure vault group ownership and setgid
+sudo chown -R nazar:vault /srv/nazar/vault /srv/nazar/vault.git
+sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
+sudo find /srv/nazar/vault.git -type d -exec chmod 2775 {} +
+
+# Verify git shared repo config
+git -C /srv/nazar/vault config core.sharedRepository group
+```
 
 ## Voice Processing Issues
 
@@ -338,6 +366,8 @@ echo "=== Tailscale ===" && tailscale status
 echo "=== Docker ===" && cd /srv/nazar && docker compose ps
 echo "=== Firewall ===" && sudo ufw status
 echo "=== Fail2Ban ===" && sudo fail2ban-client status sshd
+echo "=== Vault Git ===" && git -C /srv/nazar/vault log --oneline -3
+echo "=== Sync Log ===" && tail -5 /srv/nazar/data/git-sync.log
 echo "=== Disk ===" && df -h /
 echo "=== Memory ===" && free -h
 ```
@@ -354,8 +384,9 @@ echo "=== Memory ===" && free -h
   echo "=== Docker ===" && docker compose ps 2>/dev/null
   echo "=== Tailscale ===" && tailscale status 2>/dev/null
   echo "=== UFW ===" && sudo ufw status
+  echo "=== Vault Git ===" && git -C /srv/nazar/vault log --oneline -5 2>/dev/null
+  echo "=== Sync Log ===" && tail -10 /srv/nazar/data/git-sync.log 2>/dev/null
   echo "=== Recent gateway logs ===" && docker compose logs --tail 20 nazar-gateway 2>/dev/null
-  echo "=== Recent syncthing logs ===" && docker compose logs --tail 20 nazar-syncthing 2>/dev/null
 } > /tmp/nazar-debug.txt 2>&1
 
 cat /tmp/nazar-debug.txt

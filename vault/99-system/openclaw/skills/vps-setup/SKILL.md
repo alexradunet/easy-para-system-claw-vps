@@ -1,6 +1,6 @@
 ---
 name: vps-setup
-description: Provision a fresh Debian 13 VPS with hardened security, Tailscale networking, Docker, and the Nazar (OpenClaw + Syncthing) stack. Designed to be read by Claude Code running on the VPS to walk the user through setup interactively.
+description: Provision a fresh Debian 13 VPS with hardened security, Tailscale networking, Docker, and the Nazar (OpenClaw + Git vault sync) stack. Designed to be read by Claude Code running on the VPS to walk the user through setup interactively.
 ---
 
 # VPS Setup Skill
@@ -145,7 +145,7 @@ ssh nazar@<vps-ip>
 
 ## Phase 3: Firewall (UFW)
 
-**Why:** Block everything except what we need. Tailscale will handle internal access.
+**Why:** Block everything except what we need. Tailscale will handle internal access. No public ports needed — vault sync uses Git over SSH through Tailscale.
 
 ```bash
 sudo apt-get update && sudo apt-get install -y ufw
@@ -157,21 +157,16 @@ sudo ufw default allow outgoing
 # Allow SSH (keep this until Tailscale is confirmed working)
 sudo ufw allow 22/tcp comment "SSH"
 
-# Allow Syncthing sync (needed for device discovery and transfer)
-sudo ufw allow 22000/tcp comment "Syncthing-TCP"
-sudo ufw allow 22000/udp comment "Syncthing-UDP"
-sudo ufw allow 21027/udp comment "Syncthing-Discovery"
-
 # Enable firewall
 sudo ufw --force enable
 ```
 
-**Note:** The gateway uses host networking with loopback binding (exposed automatically via integrated Tailscale Serve). Port 8384 (Syncthing UI) is NOT opened in UFW — it's bound to 127.0.0.1 and accessed via manual `tailscale serve` proxy.
+**Note:** No Syncthing ports needed. Vault sync uses Git over SSH (through Tailscale). The gateway uses host networking with loopback binding, exposed automatically via integrated Tailscale Serve.
 
 **Verify:**
 ```bash
 sudo ufw status verbose
-# Should show: 22/tcp, 22000/tcp, 22000/udp, 21027/udp ALLOW
+# Should show: 22/tcp ALLOW (only SSH, nothing else)
 ```
 
 ---
@@ -250,7 +245,7 @@ sudo unattended-upgrades --dry-run --debug 2>&1 | head -5
 
 ## Phase 6: Install Tailscale
 
-**Why:** Zero-config VPN. All internal services are only accessible via Tailscale IPs (100.x.x.x). No ports exposed to the public internet except SSH and Syncthing sync.
+**Why:** Zero-config VPN. All internal services are only accessible via Tailscale IPs (100.x.x.x). No ports exposed to the public internet.
 
 ```bash
 # Install Tailscale
@@ -267,7 +262,7 @@ After authorization:
 ```bash
 # Get Tailscale IP
 tailscale ip -4
-# Note this IP — it's how you'll access gateway and syncthing UI
+# Note this IP — it's how you'll access gateway and vault git repo
 ```
 
 ### Lock down SSH to Tailscale only (optional but recommended)
@@ -299,7 +294,7 @@ sudo ufw status
 
 ## Phase 7: Install Docker
 
-**Why:** Containers isolate the OpenClaw gateway and Syncthing from the host.
+**Why:** Container isolates the OpenClaw gateway from the host.
 
 ```bash
 # Install Docker from official repo
@@ -348,34 +343,9 @@ docker compose version
 
 ---
 
-## Phase 8: Expose Syncthing UI via Tailscale
+## Phase 8: Deploy the Nazar Stack
 
-**Why:** The Syncthing UI is bound to `127.0.0.1` in Docker (not exposed publicly). Tailscale traffic arrives on the `tailscale0` interface, not loopback, so it can't reach `127.0.0.1`-bound ports directly. `tailscale serve` proxies tailnet traffic to localhost.
-
-**Note:** The gateway does NOT need manual `tailscale serve` setup. It uses integrated Tailscale Serve mode (`tailscale: { mode: "serve" }` in docker-compose) and manages its own proxy automatically, exposing the gateway at `https://<tailscale-hostname>/`.
-
-```bash
-# Proxy Syncthing UI (port 8384) — only manual proxy needed
-sudo tailscale serve --bg --tcp 8384 tcp://127.0.0.1:8384
-```
-
-**Verify:**
-```bash
-tailscale serve status
-# Should show Syncthing UI proxy active for 8384
-
-# From another device on the tailnet:
-# https://<tailscale-hostname>/  — Gateway (automatic, HTTPS)
-# http://<tailscale-ip>:8384     — Syncthing UI (manual proxy)
-```
-
-**Note:** The Syncthing UI proxy persists across reboots as long as Tailscale is running. Only devices on your tailnet can access it.
-
----
-
-## Phase 9: Deploy the Nazar Stack
-
-**Why:** This is what we're here for — get OpenClaw + Syncthing running.
+**Why:** This is what we're here for — get OpenClaw running with Git-based vault sync.
 
 **Note:** The docker-compose uses `network_mode: host` for the gateway container and includes integrated Tailscale Serve mode. The Tailscale CLI is included in the Dockerfile. The gateway binds to loopback and is automatically exposed at `https://<tailscale-hostname>/` via Tailscale Serve.
 
@@ -402,10 +372,13 @@ sudo bash /srv/nazar/deploy/scripts/setup-vps.sh
 ```
 
 This creates:
-- `/srv/nazar/vault/` — empty, will be populated by Syncthing
+- `/srv/nazar/vault/` — git working copy (empty initially, or with initial commit)
+- `/srv/nazar/vault.git/` — bare Git repo with post-receive hook
 - `/srv/nazar/data/openclaw/` — OpenClaw config + state
-- `/srv/nazar/data/syncthing/` — Syncthing config
+- `/srv/nazar/scripts/vault-auto-commit.sh` — cron script for agent writes
 - `/srv/nazar/.env` — secrets file with auto-generated gateway token
+- `vault` group with nazar + debian users
+- Cron job: auto-commit every 5 minutes
 
 ### Configure secrets
 
@@ -428,16 +401,18 @@ docker compose restart
 **Verify:**
 ```bash
 docker compose ps
-# Both containers should be "healthy" or "running"
+# Gateway should be "healthy" or "running"
 
 curl -sk https://vps-claw.tail697e8f.ts.net/
 # Gateway should respond (via integrated Tailscale Serve)
 
-curl -s http://127.0.0.1:8384
-# Syncthing UI should respond
-
 docker compose exec nazar-gateway ls /vault/
-# Should show vault folders (empty until Syncthing syncs)
+# Should show vault folders (empty until you push content)
+
+# Check git sync infrastructure
+git -C /srv/nazar/vault log --oneline -3
+ls /srv/nazar/vault.git/hooks/post-receive
+crontab -u nazar -l | grep vault-auto-commit
 ```
 
 ### Device pairing (first browser access)
@@ -461,28 +436,55 @@ This walks through WhatsApp linking, model configuration, and other initial sett
 
 ---
 
-## Phase 10: Connect Syncthing
+## Phase 9: Connect Your Devices (Vault Sync)
 
-**Why:** Sync the Obsidian vault from user's devices to the VPS.
+**Why:** Sync the Obsidian vault from user's devices to the VPS using Git.
 
-1. Access Syncthing UI: `http://<tailscale-ip>:8384`
-2. Get the VPS Device ID from the UI
-3. On the user's laptop/phone Syncthing:
-   - Add the VPS as a remote device (paste Device ID)
-   - Share the vault folder with the VPS device
-   - Set the folder path on VPS to `/var/syncthing/vault` (maps to `/srv/nazar/vault` on host)
-4. Accept the share on the VPS Syncthing UI
+### Laptop Setup
+
+```bash
+# Clone the vault over Tailscale SSH
+git clone nazar@<tailscale-ip>:/srv/nazar/vault.git ~/vault
+
+# Open in Obsidian, install Obsidian Git plugin
+# Configure: auto-pull 5 min, auto-push after commit, auto-commit 5 min
+```
+
+### Phone Setup (Android)
+
+1. Install Obsidian + Obsidian Git plugin
+2. Configure repository URL: `nazar@<tailscale-ip>:/srv/nazar/vault.git`
+3. Requires Tailscale running on the phone
+4. Set auto-pull and auto-push intervals
+
+### Phone Setup (iOS)
+
+1. Install Obsidian + Obsidian Git plugin, or
+2. Use Working Copy app to clone, then open in Obsidian via Files
+
+### First-time sync (vault already on laptop)
+
+If you already have a vault locally:
+
+```bash
+cd ~/vault
+git init
+git remote add origin nazar@<tailscale-ip>:/srv/nazar/vault.git
+git add -A
+git commit -m "initial vault"
+git push -u origin main
+```
 
 **Verify:**
 ```bash
-# After sync completes:
-ls /srv/nazar/vault/
+# After push:
+ssh nazar@<tailscale-ip> "ls /srv/nazar/vault/"
 # Should show: 00-inbox, 01-daily-journey, ..., 99-system
 ```
 
 ---
 
-## Phase 11: Final Security Audit
+## Phase 10: Final Security Audit
 
 Run through this checklist:
 
@@ -497,7 +499,7 @@ grep "PasswordAuthentication" /etc/ssh/sshd_config.d/hardened.conf
 
 # 3. Firewall active
 sudo ufw status
-# Expected: active, only SSH(tailscale), 22000, 21027
+# Expected: active, only SSH on tailscale0
 
 # 4. Fail2ban running
 sudo fail2ban-client status
@@ -511,21 +513,29 @@ systemctl is-enabled unattended-upgrades
 tailscale status
 # Expected: shows connected devices
 
-# 7. Docker containers healthy
+# 7. Docker container healthy
 cd /srv/nazar && docker compose ps
-# Expected: both containers running/healthy
+# Expected: gateway running/healthy
 
 # 8. Gateway using host network with loopback binding
 docker inspect nazar-gateway --format='{{.HostConfig.NetworkMode}}'
-# Expected: host (gateway manages its own Tailscale Serve proxy)
+# Expected: host
 
-# 9. Syncthing UI not exposed publicly
-ss -tlnp | grep 8384
-# Expected: 127.0.0.1:8384 (not 0.0.0.0)
+# 9. Vault git sync working
+git -C /srv/nazar/vault log --oneline -3
+# Expected: shows commits
+ls /srv/nazar/vault.git/hooks/post-receive
+# Expected: exists and is executable
+crontab -u nazar -l | grep vault-auto-commit
+# Expected: shows cron entry
 
 # 10. No secrets in vault
 grep -r "sk-ant\|sk-" /srv/nazar/vault/ 2>/dev/null | head -5
 # Expected: no output (no API keys in vault files)
+
+# 11. No legacy Syncthing ports
+sudo ufw status | grep -E "22000|21027"
+# Expected: no output (ports closed)
 ```
 
 ---
@@ -547,16 +557,19 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-### Syncthing can't connect
-Check firewall allows 22000 and 21027:
+### Git push rejected
+The auto-commit cron may have committed agent writes. Pull first:
 ```bash
-sudo ufw status | grep -E "22000|21027"
+git pull --rebase origin main
+git push
 ```
 
 ### Container can't write to vault
 Fix permissions:
 ```bash
-sudo chown -R 1000:1000 /srv/nazar/vault /srv/nazar/data
+sudo chown -R nazar:vault /srv/nazar/vault
+sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
+sudo find /srv/nazar/vault -type f -exec chmod 0664 {} +
 ```
 
 ---
@@ -567,14 +580,14 @@ sudo chown -R 1000:1000 /srv/nazar/vault /srv/nazar/data
 |---------|--------|-----|
 | SSH | Tailscale | `ssh nazar@<tailscale-ip>` |
 | Gateway | Tailscale (automatic) | `https://<tailscale-hostname>/` |
-| Syncthing UI | Tailscale (manual proxy) | `http://<tailscale-ip>:8384` |
-| Syncthing sync | Public | Ports 22000, 21027 |
+| Vault (git) | Tailscale (SSH) | `git clone nazar@<tailscale-ip>:/srv/nazar/vault.git` |
 
 | Path | Contents |
 |------|----------|
-| `/srv/nazar/vault/` | Obsidian vault (synced) |
+| `/srv/nazar/vault/` | Obsidian vault (git working copy) |
+| `/srv/nazar/vault.git/` | Bare Git repo (push/pull target) |
 | `/srv/nazar/data/openclaw/` | OpenClaw config + state |
-| `/srv/nazar/data/syncthing/` | Syncthing config |
+| `/srv/nazar/scripts/` | Auto-commit cron script |
 | `/srv/nazar/.env` | Secrets (API keys, tokens) |
 | `/srv/nazar/deploy/` | Deployment repo |
 | `/opt/openclaw/` | OpenClaw source (for Docker build) |

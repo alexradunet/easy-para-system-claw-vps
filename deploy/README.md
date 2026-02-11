@@ -1,15 +1,15 @@
 # Nazar Deploy
 
-Docker deployment stack for the Nazar AI assistant (OpenClaw + Syncthing).
+Docker deployment stack for the Nazar AI assistant (OpenClaw gateway + Git-based vault sync).
 
 ## Architecture
 
-Two containers, one shared vault:
+One container, Git-based vault sync:
 
 - **nazar-gateway** — OpenClaw with voice tools (Whisper STT + Piper TTS)
-- **nazar-syncthing** — Syncthing for vault sync across devices
+- **vault.git** — Bare Git repo served over SSH for vault synchronization
 
-Both bind-mount the same vault directory. The gateway uses `network_mode: host` with integrated Tailscale Serve (automatic HTTPS proxy). Syncthing UI is bound to 127.0.0.1 (access via manual `tailscale serve`).
+The gateway bind-mounts the vault working copy. Vault sync uses Git over SSH (through Tailscale) — no extra containers or public ports. A cron job auto-commits agent writes every 5 minutes.
 
 ## Quick Start
 
@@ -24,26 +24,32 @@ nano /srv/nazar/.env
 
 # Restart with secrets
 cd /srv/nazar && docker compose restart
+
+# Clone vault on your laptop
+git clone nazar@<tailscale-ip>:/srv/nazar/vault.git ~/vault
 ```
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.yml` | Two-service stack definition |
+| `docker-compose.yml` | Gateway container definition |
 | `Dockerfile.nazar` | OpenClaw + voice tools image |
 | `openclaw.json` | Agent config (multi-model, sandbox) |
 | `.env.example` | Secrets template |
-| `scripts/setup-vps.sh` | VPS bootstrap script |
+| `scripts/setup-vps.sh` | VPS bootstrap script (creates vault group, git repos, cron, starts container) |
+| `scripts/vault-post-receive-hook` | Git hook template (auto-deploys to working copy on push) |
+| `scripts/vault-auto-commit.sh` | Cron script template (commits agent writes every 5 min) |
+| `scripts/vault-gitignore` | .gitignore template for the vault |
 
 ## Ports
 
 | Port | Service | Access |
 |------|---------|--------|
 | 443 (HTTPS) | OpenClaw Gateway | `https://<tailscale-hostname>/` (automatic via integrated Tailscale Serve) |
-| 8384 | Syncthing UI | `http://<tailscale-ip>:8384` (manual `tailscale serve`) |
-| 22000 | Syncthing sync | Public |
-| 21027 | Syncthing discovery | Public |
+| 22 (SSH) | Git vault sync | `git clone nazar@<tailscale-ip>:/srv/nazar/vault.git` (Tailscale only) |
+
+No public ports needed. All access flows through Tailscale.
 
 ## Management
 
@@ -54,4 +60,5 @@ docker compose logs -f     # Logs
 docker compose restart     # Restart
 docker compose down        # Stop
 docker compose build       # Rebuild
+tail -f data/git-sync.log  # Vault sync log
 ```
