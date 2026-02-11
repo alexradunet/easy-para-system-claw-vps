@@ -4,14 +4,14 @@ Docker-based deployment of OpenClaw + Syncthing with shared vault volume.
 
 **Architecture**: Single `debian` user + Docker containers (no separate service user needed)
 
-## Quick Start (Hetzner VPS)
+## Quick Start (OVHcloud VPS)
 
 ```bash
-# On fresh Debian/Ubuntu VPS as debian user
+# On fresh Debian 13 VPS as debian user
 curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/master/docker/setup.sh | bash
 ```
 
-See [VPS-GUIDE.md](VPS-GUIDE.md) for detailed VPS deployment guide (works with OVHcloud, Hetzner, etc.).
+See [VPS-GUIDE.md](VPS-GUIDE.md) for the full OVHcloud Debian 13 VPS deployment guide.
 
 ## Architecture
 
@@ -214,51 +214,12 @@ docker compose exec openclaw openclaw configure
 docker compose exec syncthing syncthing cli show system
 ```
 
-## Syncthing Setup
+## Post-Infrastructure Setup
 
-1. **Get Device ID**:
-   ```bash
-   nazar-cli syncthing-id
-   # or
-   docker compose exec syncthing syncthing cli show system
-   ```
+Once containers are running, configure the services through their own UIs:
 
-2. **On your other devices**:
-   - Add VPS device ID to your Syncthing
-   - Share vault folder
-
-3. **Accept on VPS**:
-   - Access Syncthing GUI (via SSH tunnel or Tailscale)
-   - Accept device and folder requests
-
-4. **Folder Configuration**:
-   - Path: `/var/syncthing/vault` (inside container)
-   - Folder ID: `nazar-vault`
-   - Versioning: Simple (keep 3)
-
-## OpenClaw Setup
-
-1. **Configure**:
-   ```bash
-   nazar-cli configure
-   # or
-   docker compose exec -it openclaw openclaw configure
-   ```
-
-2. **Get Token**:
-   ```bash
-   nazar-cli token
-   ```
-
-3. **Access Gateway**:
-   - Via SSH tunnel: `http://localhost:18789`
-   - Via Tailscale: `https://nazar/`
-
-4. **Approve Devices**:
-   ```bash
-   docker compose exec openclaw openclaw devices list
-   docker compose exec openclaw openclaw devices approve <id>
-   ```
+1. **Syncthing** — Open the Syncthing GUI (via SSH tunnel at `http://localhost:8384`), add your devices, and share the vault folder
+2. **OpenClaw** — Run the onboarding wizard: `docker compose exec -it openclaw openclaw configure`
 
 ## Backup and Restore
 
@@ -317,32 +278,6 @@ ls -la ~/nazar/
 chown -R 1000:1000 ~/nazar
 ```
 
-### Syncthing Not Syncing
-
-```bash
-# Check device connections
-docker compose exec syncthing syncthing cli show connections
-
-# Check folder status
-docker compose exec syncthing syncthing cli show folder status nazar-vault
-
-# Restart Syncthing
-docker compose restart syncthing
-```
-
-### OpenClaw Issues
-
-```bash
-# Check config
-docker compose exec openclaw cat /home/node/.openclaw/openclaw.json
-
-# Health check
-docker compose exec openclaw openclaw health
-
-# Reconfigure
-docker compose exec -it openclaw openclaw configure
-```
-
 ## Updates
 
 ```bash
@@ -397,7 +332,7 @@ See [SECURITY.md](SECURITY.md) for detailed security information.
 
 | Document | Description |
 |----------|-------------|
-| [VPS-GUIDE.md](VPS-GUIDE.md) | VPS deployment guide (OVHcloud, Hetzner, etc.) |
+| [VPS-GUIDE.md](VPS-GUIDE.md) | OVHcloud Debian 13 VPS deployment guide |
 | [SECURITY.md](SECURITY.md) | Security hardening and best practices |
 | [MIGRATION.md](MIGRATION.md) | Migration from systemd setup |
 

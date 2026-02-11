@@ -28,7 +28,7 @@ The Second Brain is three layers: content, intelligence, and infrastructure.
 ├──────────────────────────────────────────────────────────────────────┤
 │                      INFRASTRUCTURE LAYER                            │
 │                                                                      │
-│  VPS (Debian/Ubuntu)                                                 │
+│  OVHcloud VPS (Debian 13)                                            │
 │  ├── Docker         → container runtime                              │
 │  ├── Syncthing      → real-time vault synchronization                │
 │  ├── UFW + Fail2Ban → firewall + brute-force protection              │
@@ -171,7 +171,7 @@ Containers communicate through the shared vault bind mount. OpenClaw reads/write
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Host (Debian/Ubuntu)                               │
+│  Host (OVHcloud Debian 13)                          │
 │  ├── debian user (runs Docker)                      │
 │  ├── UFW firewall                                   │
 │  └── Fail2ban                                       │

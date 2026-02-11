@@ -330,7 +330,7 @@ sudo ausearch -k openclaw_config -ts recent
 - [OVHcloud: How to secure a VPS](https://docs.ovh.com/gb/en/vps/tips-for-securing-a-vps/)
 - [CIS Docker Benchmark](https://www.cisecurity.org/benchmark/docker)
 - [Fail2ban Documentation](https://www.fail2ban.org/wiki/index.php/Main_Page)
-- [UFW Essentials](https://www.digitalocean.com/community/tutorials/ufw-essentials-common-firewall-rules-and-commands)
+- [UFW Documentation](https://help.ubuntu.com/community/UFW)
 
 ---
 

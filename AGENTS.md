@@ -86,7 +86,7 @@ curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-v
 | **Gateway** | OpenClaw Docker image |
 | **Sync** | Syncthing official Docker image |
 | **Networking** | SSH tunnel (default) or Tailscale container |
-| **OS** | Debian 13 / Ubuntu 22.04+ |
+| **OS** | Debian 13 (OVHcloud) |
 | **PKM App** | Obsidian |
 | **Container Runtime** | Docker + Docker Compose |
 
@@ -170,7 +170,7 @@ Local speech-to-text (Whisper) and text-to-speech (Piper).
 ### Quick Deploy
 
 ```bash
-# On fresh Debian/Ubuntu VPS
+# On fresh OVHcloud Debian 13 VPS
 curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/master/docker/setup.sh | bash
 ```
 
@@ -356,7 +356,7 @@ chown -R 1000:1000 ~/nazar/vault
 | Document | Description |
 |----------|-------------|
 | `docker/README.md` | Docker deployment guide |
-| `docker/VPS-GUIDE.md` | VPS deployment guide (OVHcloud, Hetzner, etc.) |
+| `docker/VPS-GUIDE.md` | OVHcloud Debian 13 VPS deployment guide |
 | `docker/SECURITY.md` | Security hardening and best practices |
 | `docker/MIGRATION.md` | Migration from old systemd setup |
 | `docs/README.md` | Project overview and quick start |
@@ -369,18 +369,14 @@ chown -R 1000:1000 ~/nazar/vault
 
 ---
 
-## Gateway Management (Post-Setup)
+## Post-Infrastructure
 
-### Device Pairing
+Once infrastructure is running, configure services through their own UIs:
 
-New browsers/devices must be approved before accessing the Control UI:
+1. **Syncthing** — Open the Syncthing GUI (`http://localhost:8384` via SSH tunnel), add devices, share the vault folder
+2. **OpenClaw** — Run the onboarding wizard: `docker compose exec -it openclaw openclaw configure`
 
-```bash
-docker compose exec openclaw openclaw devices list
-docker compose exec openclaw openclaw devices approve <request-id>
-```
-
-### Helper Commands
+### Infrastructure Management
 
 | Command | Purpose |
 |---------|---------|
@@ -388,24 +384,8 @@ docker compose exec openclaw openclaw devices approve <request-id>
 | `nazar-cli logs` | View logs |
 | `nazar-cli restart` | Restart services |
 | `nazar-cli backup` | Create backup |
-| `nazar-cli token` | Show gateway token |
 | `nazar-cli tunnel` | Show SSH tunnel command |
-| `nazar-cli syncthing-id` | Show Syncthing Device ID |
 | `nazar-cli security` | Run security audit |
-
----
-
-## Extension Points
-
-| Want to... | Do this |
-|------------|---------|
-| Add a new skill | Create folder in `~/nazar/.openclaw/workspace/skills/` |
-| Change agent personality | Edit `~/nazar/.openclaw/workspace/SOUL.md` |
-| Add an LLM provider | Run `nazar-cli configure` |
-| Add a channel | Run `nazar-cli configure` |
-| Change vault structure | Rename folders in `~/nazar/vault/`, update skills |
-| Customize Docker | Edit `~/nazar/docker/docker-compose.yml` |
-| Add extra packages | Set `OPENCLAW_EXTRA_PACKAGES` in `.env` |
 
 ---
 

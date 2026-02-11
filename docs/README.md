@@ -7,7 +7,7 @@ Welcome to the Nazar Second Brain documentation.
 | Document | Description |
 |----------|-------------|
 | [../README.md](../README.md) | Project overview and quick start |
-| [../docker/VPS-GUIDE.md](../docker/VPS-GUIDE.md) | VPS deployment guide |
+| [../docker/VPS-GUIDE.md](../docker/VPS-GUIDE.md) | OVHcloud Debian 13 VPS deployment guide |
 | [syncthing-setup.md](syncthing-setup.md) | Configure vault sync |
 | [openclaw-config.md](openclaw-config.md) | Configure AI gateway |
 
@@ -66,21 +66,13 @@ ssh -N -L 18789:localhost:18789 -L 8384:localhost:8384 debian@vps-ip
 | `~/nazar/.openclaw/` | OpenClaw configuration |
 | `~/nazar/syncthing/config/` | Syncthing data |
 
-### CLI Commands
+### Infrastructure CLI
 
 ```bash
-# OpenClaw
-docker compose exec openclaw openclaw configure
-docker compose exec openclaw openclaw devices list
-docker compose exec openclaw openclaw devices approve <id>
-
-# Syncthing
-docker compose exec syncthing syncthing cli show system
-docker compose exec syncthing syncthing cli show connections
-docker compose exec syncthing syncthing cli show folders
-
-# Or use nazar-cli
-nazar-cli configure
-nazar-cli token
-nazar-cli syncthing-id
+nazar-cli status       # Service status
+nazar-cli logs         # View logs
+nazar-cli restart      # Restart services
+nazar-cli backup       # Create backup
+nazar-cli tunnel       # Show SSH tunnel command
+nazar-cli security     # Run security audit
 ```

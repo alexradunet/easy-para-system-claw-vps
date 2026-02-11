@@ -1,15 +1,6 @@
-# VPS Deployment Guide
+# OVHcloud Debian 13 VPS Deployment Guide
 
-Complete guide for running Nazar Second Brain on a VPS (Hetzner, OVHcloud, or any Debian/Ubuntu VPS).
-
-## Providers
-
-This guide works with:
-
-- **OVHcloud** (VPS Starter ~€3.50/month, VPS Value ~€5.50/month)
-- **Hetzner** (CX11 ~€4.51/month)
-- **DigitalOcean, Linode, Vultr, etc.**
-- **Any Debian 12+ or Ubuntu 22.04+ VPS**
+Complete guide for deploying the Nazar Second Brain infrastructure on an OVHcloud VPS running Debian 13.
 
 ## Overview
 
@@ -19,34 +10,34 @@ Deploy OpenClaw + Syncthing with:
 - **Docker isolation**: All services run in containers
 - **SSH tunnel access**: Secure access without exposing ports
 - **Persistent state**: Vault and configs survive container restarts
-- **~$5/month**: 1 vCPU, 2GB RAM VPS
+- **~€3.50–5.50/month**: OVHcloud VPS Starter or Value tier
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     VPS (OVH/Hetzner/etc)                       │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                    Docker Engine                        │   │
-│  │                                                         │   │
-│  │  ┌──────────────┐      ┌──────────────┐                │   │
-│  │  │   OpenClaw   │◄────►│  Syncthing   │                │   │
-│  │  │   Gateway    │      │    Sync      │                │   │
-│  │  │  Container   │      │  Container   │                │   │
-│  │  └──────┬───────┘      └──────┬───────┘                │   │
-│  │         │                     │                        │   │
-│  │         └──────────┬──────────┘                        │   │
-│  │                    │                                   │   │
-│  │         ┌──────────┴──────────┐                        │   │
-│  │         │   ~/nazar/vault     │                        │   │
-│  │         │   (bind mount)      │                        │   │
-│  │         └─────────────────────┘                        │   │
-│  │                                                         │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  SSH Access: ssh -L 18789:localhost:18789 debian@<vps-ip>      │
-│                                                                 │
+│                        OVHcloud VPS                              │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    Docker Engine                        │    │
+│  │                                                         │    │
+│  │  ┌──────────────┐      ┌──────────────┐                │    │
+│  │  │   OpenClaw   │◄────►│  Syncthing   │                │    │
+│  │  │   Gateway    │      │    Sync      │                │    │
+│  │  │  Container   │      │  Container   │                │    │
+│  │  └──────┬───────┘      └──────┬───────┘                │    │
+│  │         │                     │                        │    │
+│  │         └──────────┬──────────┘                        │    │
+│  │                    │                                   │    │
+│  │         ┌──────────┴──────────┐                        │    │
+│  │         │   ~/nazar/vault     │                        │    │
+│  │         │   (bind mount)      │                        │    │
+│  │         └─────────────────────┘                        │    │
+│  │                                                         │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  SSH Access: ssh -L 18789:localhost:18789 debian@<vps-ip>       │
+│                                                                  │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -57,41 +48,32 @@ Deploy OpenClaw + Syncthing with:
                     └─────────────────┘
 ```
 
-## Provider-Specific Setup
+## OVHcloud VPS Plans
 
-### OVHcloud
+| Plan | Specs | Monthly Cost |
+| ----------- | --------------- | ------------ |
+| VPS Starter | 1 vCPU, 2GB RAM | ~€3.50 |
+| VPS Value | 2 vCPU, 4GB RAM | ~€5.50 |
 
-1. **Order VPS** from [OVHcloud Control Panel](https://ca.ovh.com/manager/):
+Both tiers are sufficient. VPS Starter works fine for a single user.
+
+## Step 1: Order OVHcloud VPS
+
+1. Go to [OVHcloud Control Panel](https://ca.ovh.com/manager/)
+2. **Order VPS**:
    - **Range**: VPS Starter or VPS Value
    - **Location**: Closest to you
-   - **OS**: Debian 13 or Ubuntu 22.04
-   - **Options**: Enable backup (recommended)
+   - **OS**: Debian 13
+   - **Options**: Enable automated backup (~20% of VPS price, recommended)
+3. **Note your VPS IP** from the control panel after provisioning
 
-2. **Access via KVM** (if needed):
-   - OVHcloud provides KVM console in control panel
-   - Useful if you lock yourself out of SSH
+### OVHcloud KVM Console
 
-3. **Note**: OVHcloud VPS comes with root account only initially
+OVHcloud provides a KVM (keyboard/video/mouse) console in the control panel. This is your emergency fallback if you lock yourself out of SSH. Find it under your VPS → **KVM** tab.
 
-### Hetzner
+## Step 2: Initial Server Setup
 
-1. **Create Server** in [Hetzner Console](https://console.hetzner.cloud/):
-   - **Location**: Closest to you (Nuremberg, Falkenstein, etc.)
-   - **Image**: Ubuntu 22.04 or Debian 12
-   - **Type**: CX11 (1 vCPU, 2GB RAM)
-   - **SSH Key**: Select your key
-
-2. **Wait for provisioning** (takes ~1 minute)
-
-### Other Providers
-
-- **DigitalOcean**: Create droplet with Debian 12
-- **Linode**: Create instance with Ubuntu 22.04
-- **Vultr**: Deploy Debian 12 cloud instance
-
-## Step 1: Initial Server Setup
-
-Connect as root and create `debian` user:
+Connect as root and create the `debian` user:
 
 ```bash
 # SSH into the VPS as root
@@ -115,7 +97,7 @@ curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-v
 su - debian
 ```
 
-## Step 2: Install Docker
+## Step 3: Install Docker
 
 ```bash
 # Update and install dependencies
@@ -135,7 +117,7 @@ docker --version
 docker compose version
 ```
 
-## Step 3: Deploy Nazar Second Brain
+## Step 4: Deploy Infrastructure
 
 ### Option A: Quick Deploy (Recommended)
 
@@ -208,7 +190,7 @@ chown -R 1000:1000 ~/nazar
 docker compose up -d --build
 ```
 
-## Step 4: Access Services
+## Step 5: Access Services
 
 ### Open SSH Tunnel (on your laptop)
 
@@ -222,51 +204,19 @@ ssh -f -N -L 18789:localhost:18789 -L 8384:localhost:8384 debian@YOUR_VPS_IP
 
 ### Access Services
 
-| Service          | URL (with tunnel)      |
+| Service | URL (with tunnel) |
 | ---------------- | ---------------------- |
 | OpenClaw Gateway | http://localhost:18789 |
-| Syncthing GUI    | http://localhost:8384  |
+| Syncthing GUI | http://localhost:8384 |
 
-### Get Gateway Token
+## Step 6: Post-Infrastructure Setup
 
-```bash
-# On VPS
-cd ~/nazar/docker
-docker compose exec openclaw cat /home/node/.openclaw/openclaw.json | grep token
+Once the infrastructure is running, you need to configure the services:
 
-# Or use CLI
-./nazar-cli.sh token
-```
+1. **Configure Syncthing** — Add your devices, share the vault folder (`~/nazar/vault` on VPS, `/var/syncthing/vault` in container)
+2. **Configure OpenClaw** — Run the onboarding wizard: `docker compose exec -it openclaw openclaw configure`
 
-## Step 5: Syncthing Setup
-
-1. **Get VPS Device ID**:
-
-   ```bash
-   cd ~/nazar/docker
-   docker compose exec syncthing syncthing cli show system | grep myID
-   ```
-
-2. **On your laptop**:
-   - Install Syncthing
-   - Add VPS as device (enter Device ID)
-   - Share your vault folder
-
-3. **Accept on VPS**:
-   - Open Syncthing GUI (via tunnel)
-   - Accept device request
-   - Accept folder share
-   - Set folder path to `/var/syncthing/vault`
-
-## Step 6: Configure OpenClaw
-
-```bash
-# Run configuration wizard
-cd ~/nazar/docker
-docker compose exec -it openclaw openclaw configure
-
-# Configure LLM providers, channels, etc.
-```
+These are separate from infrastructure provisioning and are handled through each service's own UI/CLI.
 
 ## Security Hardening
 
@@ -289,9 +239,7 @@ Features:
 
 See [SECURITY.md](SECURITY.md) for details.
 
-## Provider-Specific Features
-
-### OVHcloud Network Firewall
+## OVHcloud Network Firewall
 
 OVHcloud provides an additional network-level firewall in the control panel:
 
@@ -301,21 +249,9 @@ OVHcloud provides an additional network-level firewall in the control panel:
    - Allow TCP 22 (SSH)
    - Deny all other incoming
 
-This provides defense in depth with UFW.
+This provides defense in depth with UFW on the VPS itself.
 
-### Hetzner Firewall
-
-Hetzner provides a free cloud firewall:
-
-1. Go to **Firewalls** in Hetzner Console
-2. Create firewall rules:
-   - Inbound: TCP 22 from your IP only
-   - Outbound: Allow all
-3. Apply to your server
-
-## Backup Strategy
-
-### OVHcloud Backup Option
+## OVHcloud Backup Option
 
 OVHcloud offers automated backup:
 
@@ -438,45 +374,17 @@ sudo mkswap /swapfile
 sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-# Or upgrade VPS tier
+# Or upgrade to VPS Value tier in OVHcloud control panel
 ```
 
-## Cost Comparison
+### Locked Out of SSH
 
-| Provider         | Plan        | Specs           | Monthly Cost |
-| ---------------- | ----------- | --------------- | ------------ |
-| **OVHcloud**     | VPS Starter | 1 vCPU, 2GB RAM | ~€3.50       |
-| **OVHcloud**     | VPS Value   | 2 vCPU, 4GB RAM | ~€5.50       |
-| **Hetzner**      | CX11        | 1 vCPU, 2GB RAM | ~€4.51       |
-| **Hetzner**      | CX21        | 2 vCPU, 4GB RAM | ~€8.21       |
-| **DigitalOcean** | Basic       | 1 vCPU, 2GB RAM | ~$6          |
-| **Linode**       | Nanode      | 1 vCPU, 1GB RAM | ~$5          |
-
-## Migration Between Providers
-
-1. **Backup on old server**:
-
-   ```bash
-   nazar-cli backup
-   ```
-
-2. **Download backup**:
-
-   ```bash
-   scp debian@old-vps:~/nazar/backups/nazar-backup-*.tar.gz .
-   ```
-
-3. **Setup new server** (follow this guide)
-
-4. **Restore backup**:
-   ```bash
-   nazar-cli restore nazar-backup-*.tar.gz
-   ```
+Use the OVHcloud KVM console (control panel → your VPS → KVM) to regain access and fix SSH configuration.
 
 ## Resources
 
 - [OVHcloud VPS Documentation](https://docs.ovh.com/gb/en/vps/)
-- [Hetzner Cloud Docs](https://docs.hetzner.com/cloud/)
+- [OVHcloud: How to secure a VPS](https://docs.ovh.com/gb/en/vps/tips-for-securing-a-vps/)
 - [OpenClaw Documentation](https://github.com/openclaw/openclaw)
 - [Syncthing Documentation](https://docs.syncthing.net/)
 - [Project Repository](https://github.com/alexradunet/easy-para-system-claw-vps)

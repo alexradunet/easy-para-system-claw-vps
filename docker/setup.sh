@@ -27,8 +27,8 @@ log_step() { echo -e "${CYAN}[STEP]${NC} $1"; }
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║          Nazar Second Brain - Docker Setup                     ║"
-echo "║   OpenClaw + Syncthing • Shared Vault • Single User            ║"
+echo "║       Nazar Second Brain - OVHcloud VPS Docker Setup            ║"
+echo "║   OpenClaw + Syncthing • Shared Vault • Debian 13               ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -49,8 +49,9 @@ else
     exit 1
 fi
 
-if [[ ! "$OS" =~ (Debian|Ubuntu) ]]; then
-    log_warn "This script is designed for Debian/Ubuntu. Proceed with caution."
+if [[ ! "$OS" =~ Debian ]]; then
+    log_error "This script requires Debian (recommended: Debian 13 on OVHcloud VPS)."
+    exit 1
 fi
 
 # Check for Docker
@@ -327,42 +328,28 @@ if [ "$DEPLOYMENT_MODE" = "tailscale" ]; then
     docker compose exec tailscale tailscale status 2>/dev/null || log_warn "Tailscale still connecting..."
 fi
 
-# Get Syncthing Device ID
-log_info "Syncthing Device ID:"
-docker compose exec syncthing syncthing cli show system 2>/dev/null | grep "myID" || log_warn "Syncthing still initializing..."
+echo ""
+echo "Infrastructure is ready! Next steps:"
+echo ""
 
-echo ""
-echo "Next Steps:"
-echo ""
+VPS_IP=$(hostname -I | awk '{print $1}')
 
 if [ "$DEPLOYMENT_MODE" = "sshtunnel" ]; then
-    echo "1. Access OpenClaw Gateway (from your laptop):"
-    echo "   ssh -N -L 18789:localhost:18789 $CURRENT_USER@$(hostname -I | awk '{print $1}')"
-    echo "   Then open: http://localhost:18789"
-    echo ""
-    echo "2. Access Syncthing GUI (from your laptop):"
-    echo "   ssh -N -L 8384:localhost:8384 $CURRENT_USER@$(hostname -I | awk '{print $1}')"
-    echo "   Then open: http://localhost:8384"
+    echo "1. Open SSH tunnel (from your laptop):"
+    echo "   ssh -N -L 18789:localhost:18789 -L 8384:localhost:8384 $CURRENT_USER@$VPS_IP"
 else
-    echo "1. Access OpenClaw Gateway:"
-    echo "   https://$HOSTNAME/ (via Tailscale)"
-    echo ""
-    echo "2. Access Syncthing GUI:"
-    echo "   http://$HOSTNAME:8384 (via Tailscale)"
+    echo "1. Services are accessible via Tailscale."
 fi
 
 echo ""
+echo "2. Configure Syncthing:"
+echo "   Open Syncthing GUI (http://localhost:8384 via tunnel)"
+echo "   Add your devices and share the vault folder"
+echo ""
 echo "3. Configure OpenClaw:"
-echo "   docker compose exec openclaw openclaw configure"
+echo "   docker compose exec -it openclaw openclaw configure"
 echo ""
-echo "4. Get gateway token:"
-echo "   docker compose exec openclaw cat /home/node/.openclaw/openclaw.json | grep token"
-echo ""
-echo "5. Add your devices to Syncthing:"
-echo "   - Share vault folder from your laptop/phone"
-echo "   - Accept on this VPS via Syncthing GUI"
-echo ""
-echo "6. Helper commands:"
+echo "4. Helper commands:"
 echo "   alias nazar-cli='$WORK_DIR/nazar-cli.sh'"
 echo "   nazar-cli status      # Show service status"
 echo "   nazar-cli logs        # View logs"

@@ -119,18 +119,6 @@ MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@op
 KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256
 EOF
 
-# For Ubuntu 24.04+, also configure ssh.socket
-if [ -f /lib/systemd/system/ssh.socket ]; then
-    log_info "Detected Ubuntu 24.04+ style SSH configuration"
-    
-    # Backup socket config
-    cp /lib/systemd/system/ssh.socket /lib/systemd/system/ssh.socket.backup.$(date +%Y%m%d)
-    
-    # The sshd_config settings still apply, but port changes need socket config
-    # We'll keep default port 22 for now to avoid lockout
-    log_warn "Ubuntu 24.04+ detected - manual port change required in /lib/systemd/system/ssh.socket"
-fi
-
 # Validate SSH config before restarting
 if sshd -t; then
     log_success "SSH configuration is valid"

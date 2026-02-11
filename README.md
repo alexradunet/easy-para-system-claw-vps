@@ -1,6 +1,6 @@
 # Second Brain — AI-Assisted Personal Knowledge Management
 
-An AI-assisted personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running on OpenClaw, synchronized across devices via Syncthing, and hosted on a hardened Debian VPS.
+An AI-assisted personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running on OpenClaw, synchronized across devices via Syncthing, and hosted on a hardened OVHcloud Debian 13 VPS.
 
 **Architecture**: Docker containers with shared vault volume — simple, secure, reproducible.
 
@@ -9,7 +9,7 @@ An AI-assisted personal knowledge management system built on Obsidian, powered b
 ## 🚀 Quick Start
 
 ```bash
-# On your fresh Debian/Ubuntu VPS (as debian user):
+# On your fresh OVHcloud Debian 13 VPS (as debian user):
 curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/master/docker/setup.sh | bash
 
 # Follow the on-screen instructions
@@ -93,7 +93,7 @@ second-brain/
 
 ### 1. Deploy on VPS
 
-Run the setup script on a fresh Debian 13 or Ubuntu 22.04+ VPS:
+Run the setup script on a fresh OVHcloud Debian 13 VPS:
 
 ```bash
 # Create debian user first (as root)
@@ -127,48 +127,12 @@ ssh -N -L 18789:localhost:18789 -L 8384:localhost:8384 debian@your-vps-ip
 # - Syncthing GUI: http://localhost:8384
 ```
 
-### 3. Configure Syncthing
+### 3. Configure Services
 
-1. Get VPS Device ID from Syncthing GUI
-2. Add it to your laptop/phone Syncthing
-3. Share your vault folder
+Once infrastructure is running, configure services through their own UIs:
 
-### 4. Configure OpenClaw
-
-```bash
-# On VPS
-docker compose exec -it openclaw openclaw configure
-```
-
----
-
-## Daily Usage
-
-### Management Commands
-
-```bash
-# View status
-nazar-cli status
-
-# View logs
-nazar-cli logs
-
-# Restart services
-nazar-cli restart
-
-# Create backup
-nazar-cli backup
-
-# Show SSH tunnel command
-nazar-cli tunnel
-
-# Run security audit
-nazar-cli security
-```
-
-### Voice Notes
-
-Send a voice message to your agent via WhatsApp/Telegram → Nazar transcribes it → Saved to today's daily note with timestamp.
+1. **Syncthing** — Open the Syncthing GUI (`http://localhost:8384` via tunnel), add your devices, share the vault folder
+2. **OpenClaw** — Run the onboarding wizard: `docker compose exec -it openclaw openclaw configure`
 
 ---
 
@@ -176,14 +140,10 @@ Send a voice message to your agent via WhatsApp/Telegram → Nazar transcribes i
 
 | Document | Description |
 |----------|-------------|
-| `docker/VPS-GUIDE.md` | VPS deployment guide (OVHcloud, Hetzner, etc.) |
+| `docker/VPS-GUIDE.md` | OVHcloud Debian 13 VPS deployment guide |
 | `docker/SECURITY.md` | Security hardening and best practices |
 | `docker/MIGRATION.md` | Migration from old systemd setup |
-| `docs/vault-structure.md` | PARA vault layout and conventions |
-| `docs/agent.md` | Nazar agent — workspace, personality, memory |
-| `docs/syncthing-setup.md` | Detailed Syncthing configuration |
-| `docs/openclaw-config.md` | OpenClaw configuration reference |
-| `docs/troubleshooting.md` | Common issues and fixes |
+| `docs/troubleshooting.md` | Common infrastructure issues and fixes |
 
 ---
 

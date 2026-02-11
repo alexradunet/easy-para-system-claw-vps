@@ -5,13 +5,13 @@ description: Provision a fresh Debian 13 VPS with hardened security, Tailscale n
 
 # VPS Setup Skill
 
-Interactive guide for Claude Code to provision a fresh Debian 13 VPS into a secure Nazar deployment host.
+Interactive guide for Claude Code to provision a fresh OVHcloud Debian 13 VPS into a secure Nazar deployment host.
 
 ## Prerequisites
 
 Before starting, confirm with the user:
 
-1. **Fresh Debian 13 VPS** — OVH, Hetzner, or similar
+1. **Fresh OVHcloud Debian 13 VPS** — ordered from the OVHcloud control panel
 2. **Root SSH access** — user can SSH in as root (initial setup)
 3. **Tailscale account** — user has a Tailscale account at https://login.tailscale.com
 4. **Repository** — the `easy-para-system-claw-vps` repo is available (locally or on a git remote)
@@ -328,111 +328,18 @@ ls ~/nazar/vault/
 
 ---
 
-## Phase 8: Configure OpenClaw
+## Phase 8: Post-Infrastructure Setup
 
-**Why:** Set up LLM providers, API keys, and communication channels.
+Infrastructure provisioning is complete. The user now configures the services through their own UIs:
 
-```bash
-cd ~/nazar/docker
+1. **Syncthing** — Open the Syncthing GUI (via SSH tunnel at `http://localhost:8384`), add devices, and share the vault folder (`/var/syncthing/vault` inside container)
+2. **OpenClaw** — Run the onboarding wizard: `docker compose exec -it openclaw openclaw configure`
 
-# Run the interactive configuration wizard
-docker compose exec -it openclaw openclaw configure
-```
-
-This walks through model selection, API key entry, and channel setup (WhatsApp, etc.).
-
-### Get the gateway token
-
-```bash
-docker compose exec openclaw cat /home/node/.openclaw/openclaw.json | grep token
-# Or use the CLI helper:
-./nazar-cli.sh token
-```
-
-### Access the gateway
-
-```bash
-# From your laptop, open an SSH tunnel:
-ssh -N -L 18789:localhost:18789 debian@<vps-ip>
-
-# Then open: http://localhost:18789
-```
-
-### Device pairing (first browser access)
-
-The first time a browser connects to the Control UI, the gateway requires device pairing. Approve it from the CLI:
-
-```bash
-docker compose exec openclaw openclaw devices list              # List pending requests
-docker compose exec openclaw openclaw devices approve <request-id>   # Approve
-```
+These steps are handled by each service's own onboarding flow and are outside the scope of this infrastructure skill.
 
 ---
 
-## Phase 9: Connect Your Devices (Vault Sync)
-
-**Why:** Sync the Obsidian vault across all your devices using Syncthing.
-
-### Get VPS Syncthing device ID
-
-```bash
-cd ~/nazar/docker
-docker compose exec syncthing syncthing cli show system | grep myID
-# Or:
-./nazar-cli.sh syncthing-id
-```
-
-### Access Syncthing GUI
-
-```bash
-# From your laptop:
-ssh -N -L 8384:localhost:8384 debian@<vps-ip>
-# Then open: http://localhost:8384
-```
-
-### Laptop Setup
-
-1. Install Syncthing on your laptop
-2. Add the VPS device (paste the device ID from above)
-3. Share the vault folder
-4. Open the vault in Obsidian — changes sync in real-time
-
-### Phone Setup (Android)
-
-1. Install the Syncthing app from Play Store
-2. Add the VPS device
-3. Share the vault folder
-4. Install Obsidian and point it to the Syncthing vault folder
-
-### Phone Setup (iOS)
-
-1. Install Möbius Sync (Syncthing client for iOS)
-2. Add the VPS device and share the vault folder
-3. Open vault in Obsidian via Files integration
-
-### Accept devices on VPS
-
-Via Syncthing GUI (http://localhost:8384 through SSH tunnel):
-1. Accept device connections
-2. Accept folder share requests
-3. Set folder path to `/var/syncthing/vault` (already configured)
-
-**Verify:**
-```bash
-cd ~/nazar/docker
-
-# Check connections
-docker compose exec syncthing syncthing cli show connections
-# Should show your devices
-
-# Check folder status
-docker compose exec syncthing syncthing cli show folders
-# vault folder should be syncing
-```
-
----
-
-## Phase 10: Final Security Audit
+## Phase 9: Final Security Audit
 
 Run through this checklist:
 
@@ -493,7 +400,7 @@ sudo nazar-security-audit
 
 ### Locked out of SSH
 If SSH is locked to Tailscale and Tailscale goes down:
-- Use VPS provider's web console (OVH: KVM, Hetzner: Console)
+- Use OVHcloud KVM console (control panel → your VPS → KVM)
 - Re-enable public SSH: `sudo ufw allow 22/tcp`
 
 ### Containers not starting
