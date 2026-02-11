@@ -121,6 +121,24 @@ tail -f /srv/nazar/data/git-sync.log
 /srv/nazar/scripts/vault-auto-commit.sh
 ```
 
+### Fix Git Sync Issues
+
+If agent writes are not appearing locally:
+
+```bash
+# 1. Check VPS working copy status
+ssh debian@100.87.216.31 "cd /srv/nazar/vault && git status"
+
+# 2. Fix permissions (if files owned by root)
+ssh debian@100.87.216.31 "sudo chown -R debian:vault /srv/nazar/vault && sudo chmod -R u+rw /srv/nazar/vault"
+
+# 3. Reset VPS working copy if diverged
+ssh debian@100.87.216.31 "cd /srv/nazar/vault && git fetch origin && git reset --hard origin/main"
+
+# 4. Pull locally
+cd ~/nazar-vault && git pull origin main
+```
+
 ### System Status
 
 ```bash
@@ -281,7 +299,7 @@ Then point Obsidian to `~/nazar-vault`.
 │   │   └── devices/           # Paired/pending devices
 │   └── git-sync.log           # Sync log
 ├── scripts/
-│   └── vault-auto-commit.sh   # Auto-commit script
+│   └── vault-auto-commit.sh   # Auto-commit script (pulls before push)
 └── .nazar_aliases             # Bash aliases (symlinked from ~)
 ```
 

@@ -251,6 +251,87 @@ Or manually trigger:
 sudo -u debian /srv/nazar/scripts/vault-auto-commit.sh
 ```
 
+---
+
+### Git sync failing: "failed to push some refs"
+
+**Symptom:** Agent writes are committed locally on VPS but not pushed to bare repo. Sync log shows:
+```
+error: failed to push some refs to '/srv/nazar/vault.git'
+Updates were rejected because the remote contains work that you do not have locally
+```
+
+**Cause:** The auto-commit script commits but fails to push due to divergent branches between VPS working copy and bare repo. This happens when:
+1. Local commits push to bare repo
+2. Post-receive hook updates VPS working copy
+3. VPS auto-commit creates new commits on top
+4. Push fails because bare repo has commits VPS doesn't know about
+
+**Fix:**
+
+```bash
+# SSH into VPS
+ssh debian@100.87.216.31
+
+# Check VPS status
+cd /srv/nazar/vault
+git status  # Will show "ahead by X commits"
+
+# Fix permissions first (root may own some files)
+sudo chown -R debian:vault /srv/nazar/vault
+sudo chmod -R u+rw /srv/nazar/vault
+
+# Reset VPS working copy to match bare repo
+git fetch origin
+git reset --hard origin/main
+
+# Update auto-commit script to pull before push
+cat > /srv/nazar/scripts/vault-auto-commit.sh << 'EOF'
+#!/bin/bash
+cd /srv/nazar/vault || exit 1
+
+# Check if there are any changes
+if git diff --quiet && git diff --cached --quiet; then
+    exit 0
+fi
+
+# Stage and commit changes
+git add -A
+git commit -m "Auto-commit-by-Nazar"
+
+# Pull first (with rebase) to incorporate any remote changes, then push
+git pull --rebase origin main || git pull origin main
+git push origin main
+EOF
+chmod +x /srv/nazar/scripts/vault-auto-commit.sh
+```
+
+**Prevention:** The updated auto-commit script now pulls before pushing to handle divergent branches automatically.
+
+---
+
+### Permission denied on git operations
+
+**Symptom:** Git commands fail with "Permission denied" or "unable to unlink" errors.
+
+**Cause:** Files in vault are owned by root (from Docker container writes) instead of `debian:vault`.
+
+**Fix:**
+```bash
+# Fix ownership
+sudo chown -R debian:vault /srv/nazar/vault
+sudo chmod -R u+rw /srv/nazar/vault
+
+# Fix directory permissions (setgid for group inheritance)
+sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
+sudo find /srv/nazar/vault -type f -exec chmod 0664 {} +
+```
+
+Or manually trigger:
+```bash
+sudo -u debian /srv/nazar/scripts/vault-auto-commit.sh
+```
+
 ### Post-receive hook not updating working copy
 
 **Symptom:** You pushed to `vault.git` but `/srv/nazar/vault/` doesn't reflect the changes.
