@@ -16,7 +16,7 @@ The gateway bind-mounts the vault working copy. Vault sync uses Git over SSH (th
 ```bash
 # On your VPS
 git clone <this-repo> /srv/nazar/deploy
-cd /srv/nazar/deploy
+cd /srv/nazar/deploy/deploy
 sudo bash scripts/setup-vps.sh
 
 # Run setup wizard

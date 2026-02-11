@@ -22,7 +22,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 # Fast-forward working copy to match what was pushed
-BRANCH=$(git branch --show-current)
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
 git fetch origin "$BRANCH" 2>>"$LOG"
 git reset --hard "origin/$BRANCH" 2>>"$LOG"
 log "working copy updated to $(git rev-parse --short HEAD)"

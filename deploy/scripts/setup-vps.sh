@@ -4,7 +4,7 @@ set -e
 DEPLOY_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 NAZAR_ROOT="${NAZAR_ROOT:-/srv/nazar}"
 DEPLOY_USER="${DEPLOY_USER:-debian}"
-OPENCLAW_SRC="/opt/openclaw"
+OPENCLAW_SRC="${OPENCLAW_SRC:-/opt/openclaw}"
 
 echo "=== Nazar VPS Setup ==="
 echo "Root: $NAZAR_ROOT | User: $DEPLOY_USER"
@@ -55,11 +55,8 @@ if [ -z "${VAULT_GIT_REMOTE:-}" ]; then
         # Push vault contents to bare repo
         cd "$NAZAR_ROOT/vault"
         git remote add origin "$NAZAR_ROOT/vault.git" 2>/dev/null || git remote set-url origin "$NAZAR_ROOT/vault.git"
-        git push -u origin main 2>/dev/null || git push -u origin master 2>/dev/null || {
-            # Might be on default branch name — detect and push
-            BRANCH=$(git branch --show-current)
-            git push -u origin "$BRANCH"
-        }
+        BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
+        git push -u origin "$BRANCH"
 
         # Install post-receive hook
         cp "$DEPLOY_DIR/scripts/vault-post-receive-hook" "$NAZAR_ROOT/vault.git/hooks/post-receive"
@@ -74,6 +71,8 @@ else
     echo "Using external git remote: $VAULT_GIT_REMOTE"
     cd "$NAZAR_ROOT/vault"
     git remote add origin "$VAULT_GIT_REMOTE" 2>/dev/null || git remote set-url origin "$VAULT_GIT_REMOTE"
+    BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
+    git push -u origin "$BRANCH" 2>/dev/null || echo "Note: could not push to remote (empty remote or auth needed). Cron will retry."
     echo "Vault remote set to $VAULT_GIT_REMOTE"
 fi
 
@@ -84,7 +83,7 @@ chmod +x "$NAZAR_ROOT/scripts/vault-auto-commit.sh"
 chown "$DEPLOY_USER":"$DEPLOY_USER" "$NAZAR_ROOT/scripts/vault-auto-commit.sh"
 
 # Install crontab for deploy user (preserving existing entries)
-CRON_LINE="*/5 * * * * $NAZAR_ROOT/scripts/vault-auto-commit.sh"
+CRON_LINE="*/5 * * * * VAULT_DIR=$NAZAR_ROOT/vault NAZAR_DATA_DIR=$NAZAR_ROOT/data $NAZAR_ROOT/scripts/vault-auto-commit.sh"
 (crontab -u "$DEPLOY_USER" -l 2>/dev/null | grep -v vault-auto-commit; echo "$CRON_LINE") | crontab -u "$DEPLOY_USER" -
 echo "Cron installed: vault auto-commit every 5 minutes"
 
@@ -116,6 +115,9 @@ if [ ! -f "$NAZAR_ROOT/.env" ]; then
     # Generate gateway token
     TOKEN=$(openssl rand -hex 32)
     sed -i "s/generate-with-openssl-rand-hex-32/$TOKEN/" "$NAZAR_ROOT/.env"
+    if [ "$NAZAR_ROOT" != "/srv/nazar" ]; then
+        sed -i "s|/srv/nazar|$NAZAR_ROOT|g" "$NAZAR_ROOT/.env"
+    fi
     echo "Generated gateway token."
 else
     echo ".env already exists, skipping."
