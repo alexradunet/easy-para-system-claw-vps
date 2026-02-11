@@ -37,7 +37,7 @@ obsidian-cli.py list-daily --year 2026    # List daily notes
 **Environment variables:**
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VAULT_PATH` | `/home/nazar/vault` | Path to Obsidian vault root |
+| `VAULT_PATH` | `/vault` | Path to Obsidian vault root (container path) |
 
 ---
 
@@ -74,10 +74,10 @@ transcribe.py audio.ogg small    # Transcribe with timestamps
 **Environment variables:**
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VAULT_PATH` | `/home/nazar/vault` | Obsidian vault root |
-| `VOICE_VENV` | `/home/nazar/.local/venv-voice` | Python venv with Whisper/Piper |
-| `WHISPER_MODEL_DIR` | `/home/nazar/.local/share/whisper` | Whisper model cache |
-| `PIPER_MODEL_DIR` | `/home/nazar/.local/share/piper` | Piper voice models |
+| `VAULT_PATH` | `/vault` | Obsidian vault root (container path) |
+| `VOICE_VENV` | `/home/node/.local/venv-voice` | Python venv with Whisper/Piper |
+| `WHISPER_MODEL_DIR` | `/home/node/.local/share/whisper` | Whisper model cache |
+| `PIPER_MODEL_DIR` | `/home/node/.local/share/piper` | Piper voice models |
 
 ---
 
@@ -85,30 +85,29 @@ transcribe.py audio.ogg small    # Transcribe with timestamps
 
 Automated provisioning and security hardening for a Debian VPS.
 
-**Scripts:**
+**Scripts (VPS hardening):**
 | Script | Purpose |
 |--------|---------|
-| `provision-vps.sh` | Master script — runs all phases end-to-end |
-| `secure-vps.sh` | User creation, SSH hardening, firewall, fail2ban, auto-updates |
+| `secure-vps.sh` | SSH hardening, firewall, fail2ban, auto-updates |
 | `install-tailscale.sh` | Install + authenticate Tailscale |
 | `lock-ssh-to-tailscale.sh` | Remove public SSH, Tailscale-only access |
-| `install-node.sh` | Install Node.js 22 for OpenClaw |
 | `audit-vps.sh` | Security + health audit (read-only) |
 
 **Usage:**
 ```bash
-# Full provisioning (one command)
-sudo bash bootstrap/bootstrap.sh
+# Full Docker deployment (recommended)
+curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/master/docker/setup.sh | bash
 
-# Or step by step
+# VPS hardening only (step by step)
 sudo bash vault/99-system/openclaw/skills/vps-setup/scripts/secure-vps.sh
 sudo bash vault/99-system/openclaw/skills/vps-setup/scripts/install-tailscale.sh
 sudo bash vault/99-system/openclaw/skills/vps-setup/scripts/lock-ssh-to-tailscale.sh
-sudo bash vault/99-system/openclaw/skills/vps-setup/scripts/install-node.sh
 sudo bash vault/99-system/openclaw/skills/vps-setup/scripts/audit-vps.sh
 ```
 
 No environment variables — all paths are detected or hardcoded to standard locations.
+
+See [docker/VPS-GUIDE.md](../docker/VPS-GUIDE.md) for the complete deployment guide.
 
 ---
 

@@ -108,7 +108,7 @@ Located at `vault/99-system/openclaw/skills/`:
 
 ## Configuration
 
-Agent configuration lives in `deploy/openclaw.json` and `openclaw configure`:
+Agent configuration lives in `~/nazar/.openclaw/openclaw.json` and `openclaw configure`:
 
 - **Models**: Configured via `openclaw configure` (not hardcoded)
 - **Channels**: Configured via `openclaw configure` (WhatsApp, etc.)

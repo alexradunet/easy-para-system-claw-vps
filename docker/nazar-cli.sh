@@ -394,12 +394,6 @@ case "${1:-}" in
     security|audit)
         sudo nazar-security-audit
         ;;
-    security|audit)
-        sudo nazar-security-audit
-        ;;
-    security|audit)
-        sudo nazar-security-audit
-        ;;
     help|--help|-h|"")
         show_help
         ;;

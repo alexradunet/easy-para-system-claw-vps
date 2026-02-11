@@ -28,24 +28,24 @@ This skill includes automation scripts for each phase:
 | `scripts/lock-ssh-to-tailscale.sh` | Remove public SSH, Tailscale-only access | root |
 | `scripts/audit-vps.sh` | Security + health check (read-only, safe to run anytime) | root |
 
-The recommended path is to use the **bootstrap script** (`bootstrap/bootstrap.sh`) which runs all phases end-to-end.
+The recommended path is to use the **Docker setup script** which handles service installation end-to-end.
 
 ### Quick Start (one command)
 
 ```bash
-# On VPS as root:
-curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/master/bootstrap/bootstrap.sh | sudo bash
+# On VPS as debian user:
+curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/master/docker/setup.sh | bash
 ```
 
 ### Step by Step (if you prefer control)
 
 ```bash
-sudo bash secure-vps.sh           # Harden the server
-sudo bash install-tailscale.sh    # Install + auth Tailscale
+sudo bash secure-vps.sh           # Harden the server (Phases 1-5)
+sudo bash install-tailscale.sh    # Install + auth Tailscale (Phase 6)
 # Verify: ssh debian@<tailscale-ip>
 sudo bash lock-ssh-to-tailscale.sh  # Lock SSH to Tailscale
-# Then run bootstrap.sh for service setup
-sudo bash audit-vps.sh            # Verify everything
+sudo bash audit-vps.sh            # Verify security
+# Then run Docker setup for service deployment (Phase 7)
 ```
 
 ## Execution Order (Manual Reference)
@@ -282,107 +282,89 @@ sudo ufw status
 
 ---
 
-## Phase 7: Run Bootstrap (Install Services)
+## Phase 7: Deploy Services (Docker)
 
-**Why:** This sets up the `nazar` service user, installs Node.js, OpenClaw, Syncthing, and creates systemd services.
+**Why:** Install Docker and deploy OpenClaw + Syncthing in containers with a shared vault volume. No separate service user needed — Docker provides isolation.
 
-### Option A: One-line bootstrap (recommended)
+### Option A: One-line setup (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/master/bootstrap/bootstrap.sh | sudo bash
+# As debian user:
+curl -fsSL https://raw.githubusercontent.com/alexradunet/easy-para-system-claw-vps/master/docker/setup.sh | bash
 ```
 
 ### Option B: Clone and run
 
 ```bash
 su - debian
-git clone https://github.com/alexradunet/easy-para-system-claw-vps.git ~/nazar
-cd ~/nazar
-sudo bash bootstrap/bootstrap.sh
+git clone https://github.com/alexradunet/easy-para-system-claw-vps.git ~/nazar-deploy
+cd ~/nazar-deploy/docker
+bash setup.sh
 ```
 
-The bootstrap script:
-- Creates `nazar` service user (no sudo, locked password)
-- Installs Node.js 22, OpenClaw, Syncthing
-- Hardens SSH (if not already done)
-- Configures UFW, Fail2Ban, auto-updates
-- Creates systemd user services (`openclaw.service`, `syncthing.service`)
-- Generates a secure gateway token
-- Installs voice tools (Whisper, Piper)
-- Creates helper scripts in `/home/debian/bin/`
+The setup script:
+- Installs Docker and Docker Compose (if not present)
+- Creates directory structure (`~/nazar/vault`, `~/nazar/.openclaw`, `~/nazar/syncthing`)
+- Generates `openclaw.json` with a secure gateway token
+- Builds the OpenClaw container image
+- Starts OpenClaw + Syncthing containers
+- Optionally runs security hardening (`setup-security.sh`)
 
 **Verify:**
 ```bash
-# Check nazar user exists
-id nazar
-# Expected: uid=...(nazar) gid=...(nazar) groups=...(nazar)
+cd ~/nazar/docker
 
-# Check services exist
-ls /etc/systemd/user/openclaw.service /etc/systemd/user/syncthing.service
-# Both should exist
+# Check containers are running
+docker compose ps
+# Expected: nazar-openclaw and nazar-syncthing both "Up"
 
-# Check OpenClaw config
-ls /home/nazar/.openclaw/openclaw.json
-# Should exist with no placeholder tokens
+# Check OpenClaw health
+docker compose exec openclaw openclaw health
+
+# Check vault directory
+ls ~/nazar/vault/
+# Should show: 00-inbox, 01-daily-journey, ..., 99-system
 ```
 
 ---
 
-## Phase 8: Deploy Vault and Start Services
+## Phase 8: Configure OpenClaw
 
-**Why:** Get the vault content onto the VPS and start OpenClaw + Syncthing.
-
-### Copy vault content
+**Why:** Set up LLM providers, API keys, and communication channels.
 
 ```bash
-# As debian user
-sudo cp -r ~/nazar/vault/* /home/nazar/vault/
-sudo chown -R nazar:nazar /home/nazar/vault
+cd ~/nazar/docker
+
+# Run the interactive configuration wizard
+docker compose exec -it openclaw openclaw configure
 ```
 
-### Start Syncthing
+This walks through model selection, API key entry, and channel setup (WhatsApp, etc.).
+
+### Get the gateway token
 
 ```bash
-sudo bash ~/nazar/nazar/scripts/setup-syncthing.sh
+docker compose exec openclaw cat /home/node/.openclaw/openclaw.json | grep token
+# Or use the CLI helper:
+./nazar-cli.sh token
 ```
 
-### Start OpenClaw
+### Access the gateway
 
 ```bash
-sudo bash ~/nazar/nazar/scripts/setup-openclaw.sh
-```
+# From your laptop, open an SSH tunnel:
+ssh -N -L 18789:localhost:18789 debian@<vps-ip>
 
-### Configure OpenClaw
-
-```bash
-sudo -u nazar openclaw configure
-```
-
-This interactive wizard walks through model selection, API key entry, and channel setup (WhatsApp, etc.).
-
-**Verify:**
-```bash
-# Services running
-sudo -u nazar systemctl --user status openclaw
-sudo -u nazar systemctl --user status syncthing
-# Both should be "active (running)"
-
-# Gateway responds
-curl -sk https://<tailscale-hostname>/
-# Should get a response
-
-# Vault has content
-ls /home/nazar/vault/
-# Should show: 00-inbox, 01-daily-journey, ..., 99-system
+# Then open: http://localhost:18789
 ```
 
 ### Device pairing (first browser access)
 
-The first time a browser connects to the Control UI at `https://<tailscale-hostname>/`, the gateway requires device pairing. Approve it from the CLI:
+The first time a browser connects to the Control UI, the gateway requires device pairing. Approve it from the CLI:
 
 ```bash
-sudo -u nazar openclaw devices list              # List pending pairing requests
-sudo -u nazar openclaw devices approve <request-id>   # Approve the device
+docker compose exec openclaw openclaw devices list              # List pending requests
+docker compose exec openclaw openclaw devices approve <request-id>   # Approve
 ```
 
 ---
@@ -394,7 +376,18 @@ sudo -u nazar openclaw devices approve <request-id>   # Approve the device
 ### Get VPS Syncthing device ID
 
 ```bash
-sudo -u nazar syncthing cli show system | grep myID
+cd ~/nazar/docker
+docker compose exec syncthing syncthing cli show system | grep myID
+# Or:
+./nazar-cli.sh syncthing-id
+```
+
+### Access Syncthing GUI
+
+```bash
+# From your laptop:
+ssh -N -L 8384:localhost:8384 debian@<vps-ip>
+# Then open: http://localhost:8384
 ```
 
 ### Laptop Setup
@@ -419,20 +412,21 @@ sudo -u nazar syncthing cli show system | grep myID
 
 ### Accept devices on VPS
 
-On VPS, accept the incoming device connections:
-
-1. Access `http://<tailscale-ip>:8384` (Syncthing web UI)
-2. Accept device connections
-3. Accept folder share requests
+Via Syncthing GUI (http://localhost:8384 through SSH tunnel):
+1. Accept device connections
+2. Accept folder share requests
+3. Set folder path to `/var/syncthing/vault` (already configured)
 
 **Verify:**
 ```bash
+cd ~/nazar/docker
+
 # Check connections
-sudo -u nazar syncthing cli show connections
+docker compose exec syncthing syncthing cli show connections
 # Should show your devices
 
 # Check folder status
-sudo -u nazar syncthing cli show folders
+docker compose exec syncthing syncthing cli show folders
 # vault folder should be syncing
 ```
 
@@ -453,7 +447,7 @@ grep "PasswordAuthentication" /etc/ssh/sshd_config.d/nazar.conf
 
 # 3. Firewall active
 sudo ufw status
-# Expected: active, only SSH on tailscale0
+# Expected: active, only SSH (or SSH on tailscale0 if locked down)
 
 # 4. Fail2ban running
 sudo fail2ban-client status
@@ -463,39 +457,34 @@ sudo fail2ban-client status
 systemctl is-enabled unattended-upgrades
 # Expected: enabled
 
-# 6. Tailscale connected
+# 6. Tailscale connected (if using Tailscale mode)
 tailscale status
 # Expected: shows connected devices
 
-# 7. OpenClaw service running
-sudo -u nazar systemctl --user status openclaw
-# Expected: active (running)
+# 7. Docker containers running
+cd ~/nazar/docker && docker compose ps
+# Expected: nazar-openclaw and nazar-syncthing both "Up"
 
-# 8. Syncthing service running
-sudo -u nazar systemctl --user status syncthing
-# Expected: active (running)
+# 8. OpenClaw healthy
+docker compose exec openclaw openclaw health
 
 # 9. Vault syncing
-sudo -u nazar syncthing cli show connections
+docker compose exec syncthing syncthing cli show connections
 # Expected: shows connected devices
 
 # 10. No secrets in vault
-grep -r "sk-ant\|sk-" /home/nazar/vault/ 2>/dev/null | head -5
+grep -r "sk-ant\|sk-" ~/nazar/vault/ 2>/dev/null | head -5
 # Expected: no output (no API keys in vault files)
 
-# 11. No legacy Syncthing ports in UFW
-sudo ufw status | grep -E "22000|21027"
-# Expected: no output (Syncthing uses Tailscale, no UFW ports needed)
-
-# 12. Config has no placeholder tokens
-grep -E "GENERATE_NEW_TOKEN|GENERATE_SECURE_TOKEN|CHANGE_ME" /home/nazar/.openclaw/openclaw.json
+# 11. Config has no placeholder tokens
+grep -E "GENERATE_NEW_TOKEN|GENERATE_SECURE_TOKEN|CHANGE_ME" ~/nazar/.openclaw/openclaw.json
 # Expected: no output (token has been generated)
 ```
 
-Or run the audit script:
+Or run the security audit:
 
 ```bash
-sudo bash ~/nazar/vault/99-system/openclaw/skills/vps-setup/scripts/audit-vps.sh
+sudo nazar-security-audit
 ```
 
 ---
@@ -507,38 +496,47 @@ If SSH is locked to Tailscale and Tailscale goes down:
 - Use VPS provider's web console (OVH: KVM, Hetzner: Console)
 - Re-enable public SSH: `sudo ufw allow 22/tcp`
 
-### Services not starting
-Check systemd user services:
+### Containers not starting
 ```bash
-# Check logs
-sudo -u nazar journalctl --user -u openclaw --no-pager -n 20
-sudo -u nazar journalctl --user -u syncthing --no-pager -n 20
+cd ~/nazar/docker
 
-# Ensure lingering is enabled
-loginctl show-user nazar | grep Linger
-# If Linger=no:
-sudo loginctl enable-linger nazar
+# Check logs
+docker compose logs
+
+# Check disk space
+df -h
+
+# Fix permissions
+chown -R 1000:1000 ~/nazar
+
+# Rebuild and restart
+docker compose down
+docker compose up -d --build
 ```
 
 ### Syncthing not syncing
 ```bash
+cd ~/nazar/docker
+
 # Check connections
-sudo -u nazar syncthing cli show connections
+docker compose exec syncthing syncthing cli show connections
 
 # Check folder errors
-sudo -u nazar syncthing cli show folders
+docker compose exec syncthing syncthing cli show folders
 
-# Ensure Tailscale is connected
-tailscale status
+# Restart Syncthing
+docker compose restart syncthing
 ```
 
 ### OpenClaw config issues
 ```bash
+cd ~/nazar/docker
+
 # Check config
-cat /home/nazar/.openclaw/openclaw.json | jq .
+docker compose exec openclaw cat /home/node/.openclaw/openclaw.json | jq .
 
 # Reconfigure
-sudo -u nazar openclaw configure
+docker compose exec -it openclaw openclaw configure
 ```
 
 ### Out of memory (small VPS)
@@ -557,21 +555,23 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 | Service | Access | URL |
 |---------|--------|-----|
-| SSH | Tailscale | `ssh debian@<tailscale-ip>` |
-| Gateway | Tailscale (automatic) | `https://<tailscale-hostname>/` |
-| Syncthing GUI | Tailscale | `http://<tailscale-ip>:8384` |
+| SSH | Direct or Tailscale | `ssh debian@<vps-ip>` |
+| Gateway | SSH tunnel | `http://localhost:18789` (via `ssh -L 18789:localhost:18789`) |
+| Syncthing GUI | SSH tunnel | `http://localhost:8384` (via `ssh -L 8384:localhost:8384`) |
 
-| Path | Contents |
-|------|----------|
-| `/home/nazar/vault/` | Obsidian vault (synced via Syncthing) |
-| `/home/nazar/.openclaw/` | OpenClaw config + devices (mode 700) |
-| `/home/nazar/.local/state/syncthing/` | Syncthing state |
-| `/home/nazar/.local/venv-voice/` | Voice tools (Whisper, Piper) |
-| `/home/debian/bin/` | Helper scripts (nazar-status, nazar-logs, etc.) |
+| Path (Host) | Path (Container) | Contents |
+|------|------------------|----------|
+| `~/nazar/vault/` | `/vault` (OpenClaw), `/var/syncthing/vault` (Syncthing) | Obsidian vault |
+| `~/nazar/.openclaw/` | `/home/node/.openclaw/` | OpenClaw config + devices |
+| `~/nazar/.openclaw/workspace/` | `/home/node/.openclaw/workspace/` | Agent workspace |
+| `~/nazar/syncthing/config/` | `/var/syncthing/config/` | Syncthing database |
 
-| Helper | Purpose |
-|--------|---------|
-| `nazar-status` | Check OpenClaw + Syncthing service status |
-| `nazar-logs` | Tail OpenClaw logs |
-| `nazar-restart` | Restart OpenClaw service |
-| `nazar-audit` | Run security audit |
+| Command | Purpose |
+|---------|---------|
+| `nazar-cli status` | Show container status and resource usage |
+| `nazar-cli logs` | View service logs |
+| `nazar-cli restart` | Restart all containers |
+| `nazar-cli backup` | Create backup of vault and configs |
+| `nazar-cli token` | Show gateway token |
+| `nazar-cli tunnel` | Show SSH tunnel command |
+| `nazar-cli syncthing-id` | Show Syncthing Device ID |
