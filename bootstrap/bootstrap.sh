@@ -1,384 +1,601 @@
 #!/bin/bash
 #
-# Nazar VPS Bootstrap Script
-# Run this on a fresh VPS to prepare for AI-assisted setup
+# Nazar Second Brain - Simplified Bootstrap Script
+# 
+# Architecture:
+#   - debian: System administrator user (sudo access)
+#   - nazar:  Service user for OpenClaw + Syncthing (no sudo)
+#   - Vault synced via Syncthing (not Git)
+#   - OpenClaw runs directly via npm (not Docker)
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/<user>/nazar-second-brain/main/bootstrap/bootstrap.sh | bash
-#   OR
-#   bash bootstrap/bootstrap.sh
+#   curl -fsSL https://raw.githubusercontent.com/<user>/second-brain/main/bootstrap/bootstrap.sh | bash
 #
 
 set -e
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[OK]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║         Nazar Second Brain - VPS Bootstrap                   ║"
-echo "║         AI-Assisted Setup Preparation                        ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "╔════════════════════════════════════════════════════════════════╗"
+echo "║          Nazar Second Brain - Simplified Setup                 ║"
+echo "║          No Docker • Syncthing Sync • Simple & Secure          ║"
+echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Determine current user and sudo availability
+# ============================================================================
+# PHASE 1: Pre-flight Checks
+# ============================================================================
+
 CURRENT_USER=$(whoami)
-if [ "$EUID" -eq 0 ]; then
-    RUNNING_AS_ROOT=true
-    SUDO_CMD=""
-else
-    RUNNING_AS_ROOT=false
-    # Check if we have passwordless sudo
-    if sudo -n true 2>/dev/null; then
-        SUDO_CMD="sudo"
-        log_info "Running as $CURRENT_USER with sudo access"
-    else
-        log_error "This script requires root or passwordless sudo. Please run as root or ensure sudo is configured."
-        exit 1
-    fi
+if [ "$EUID" -ne 0 ]; then
+    log_error "This script must be run as root. Please run: sudo bash bootstrap.sh"
+    exit 1
 fi
 
 # Check OS
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     OS=$NAME
-    VERSION=$VERSION_ID
+    log_info "Detected OS: $OS"
 else
     log_error "Cannot detect OS"
     exit 1
 fi
 
-log_info "Detected OS: $OS $VERSION"
-
 if [[ ! "$OS" =~ (Debian|Ubuntu) ]]; then
     log_warn "This script is designed for Debian/Ubuntu. Proceed with caution."
-    read -p "Continue anyway? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
 fi
 
-# Set deploy user (if running as debian/ubuntu, use current user)
-if [ "$CURRENT_USER" = "debian" ] || [ "$CURRENT_USER" = "ubuntu" ]; then
-    DEPLOY_USER="$CURRENT_USER"
-    log_info "Running as deploy user: $DEPLOY_USER"
-elif id "debian" &>/dev/null; then
-    DEPLOY_USER="debian"
-    log_info "Deploy user: $DEPLOY_USER"
-elif id "ubuntu" &>/dev/null; then
-    DEPLOY_USER="ubuntu"
-    log_info "Deploy user: $DEPLOY_USER"
-else
-    log_info "Creating deploy user 'nazar'..."
-    $SUDO_CMD useradd -m -s /bin/bash -G sudo nazar
-    DEPLOY_USER="nazar"
-fi
+# ============================================================================
+# PHASE 2: System Update & Base Packages
+# ============================================================================
 
-# Update package lists
 log_info "Updating package lists..."
-$SUDO_CMD apt-get update -qq
+apt-get update -qq
 
-# Install prerequisites
-log_info "Installing prerequisites..."
+log_info "Installing base packages..."
+apt-get install -y -qq curl git ufw fail2ban jq openssl \
+    apt-transport-https ca-certificates gnupg lsb-release \
+    software-properties-common
 
-# Check which packages are already installed
-PACKAGES="curl git ufw fail2ban jq openssl apt-transport-https ca-certificates gnupg lsb-release"
-MISSING_PACKAGES=""
+log_success "Base packages installed"
 
-for pkg in $PACKAGES; do
-    if ! dpkg -l | grep -q "^ii  $pkg "; then
-        MISSING_PACKAGES="$MISSING_PACKAGES $pkg"
-    fi
-done
+# ============================================================================
+# PHASE 3: Create Users
+# ============================================================================
 
-if [ -n "$MISSING_PACKAGES" ]; then
-    log_info "Installing missing packages:$MISSING_PACKAGES"
-    $SUDO_CMD apt-get install -y -qq $MISSING_PACKAGES
-else
-    log_info "All prerequisite packages already installed"
+# Create debian admin user if not exists
+if ! id "debian" &>/dev/null; then
+    log_info "Creating admin user 'debian'..."
+    useradd -m -s /bin/bash -G sudo debian
+    # Allow passwordless sudo for debian
+    echo "debian ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/debian
+    chmod 440 /etc/sudoers.d/debian
 fi
 
-log_success "Prerequisites installed"
-
-# Check architecture (must be x86_64 or arm64)
-ARCH=$(uname -m)
-if [[ "$ARCH" != "x86_64" && "$ARCH" != "aarch64" ]]; then
-    log_warn "Architecture $ARCH may not be fully supported. x86_64 or arm64 recommended."
+# Create nazar service user if not exists
+if ! id "nazar" &>/dev/null; then
+    log_info "Creating service user 'nazar'..."
+    useradd -m -s /bin/bash nazar
+    # No sudo access for nazar - security principle
 fi
 
-# Add swap if low memory (< 2GB) - needed for Docker builds
-TOTAL_MEM=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
-if [ "$TOTAL_MEM" -lt 2048 ] && [ ! -f /swapfile ]; then
-    log_info "Low memory detected (${TOTAL_MEM}MB). Adding 2GB swap for Docker builds..."
-    $SUDO_CMD fallocate -l 2G /swapfile || $SUDO_CMD dd if=/dev/zero of=/swapfile bs=1M count=2048
-    $SUDO_CMD chmod 600 /swapfile
-    $SUDO_CMD mkswap /swapfile
-    $SUDO_CMD swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | $SUDO_CMD tee -a /etc/fstab > /dev/null
-    log_success "Swap enabled"
+log_success "Users created: debian (admin), nazar (service)"
+
+# ============================================================================
+# PHASE 4: SSH Key Setup (copy from root if exists)
+# ============================================================================
+
+if [ -f /root/.ssh/authorized_keys ]; then
+    log_info "Copying SSH keys to debian user..."
+    mkdir -p /home/debian/.ssh
+    cp /root/.ssh/authorized_keys /home/debian/.ssh/
+    chown -R debian:debian /home/debian/.ssh
+    chmod 700 /home/debian/.ssh
+    chmod 600 /home/debian/.ssh/authorized_keys
 fi
 
-# Install Node.js 22 LTS (required by OpenClaw)
-NEED_NODE_INSTALL=false
-if ! command -v node &> /dev/null; then
-    NEED_NODE_INSTALL=true
-    log_info "Node.js not found. Installing Node.js 22 LTS..."
-else
-    NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -lt 22 ]; then
-        NEED_NODE_INSTALL=true
-        log_warn "Node.js version is $NODE_VERSION (< 22). Upgrading..."
-    else
-        log_success "Node.js 22+ already installed: $(node --version)"
-    fi
+# ============================================================================
+# PHASE 5: Install Node.js 22
+# ============================================================================
+
+if ! command -v node &> /dev/null || [ "$(node --version | cut -d'v' -f2 | cut -d'.' -f1)" -lt 22 ]; then
+    log_info "Installing Node.js 22..."
+    rm -f /etc/apt/sources.list.d/nodesource.list
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null 2>&1
+    apt-get install -y -qq nodejs
 fi
 
-if [ "$NEED_NODE_INSTALL" = true ]; then
-    # Remove old NodeSource repo if exists (to allow clean upgrade)
-    $SUDO_CMD rm -f /etc/apt/sources.list.d/nodesource.list
-    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO_CMD bash - > /dev/null 2>&1
-    $SUDO_CMD apt-get install -y -qq nodejs
-    log_success "Node.js installed: $(node --version)"
+log_success "Node.js installed: $(node --version)"
+
+# ============================================================================
+# PHASE 6: Install OpenClaw Globally
+# ============================================================================
+
+if ! command -v openclaw &> /dev/null; then
+    log_info "Installing OpenClaw..."
+    npm install -g openclaw@latest
 fi
 
-# Check for Claude Code or Kimi Code
-log_info "Checking for AI assistant CLI..."
+log_success "OpenClaw installed: $(openclaw --version 2>/dev/null || echo 'installed')"
 
-INSTALL_AI=""
-if ! command -v claude &> /dev/null && ! command -v kimi &> /dev/null; then
-    echo ""
-    echo "Which AI assistant would you like to install?"
-    echo "  1) Claude Code (Anthropic)"
-    echo "  2) Kimi Code (Moonshot AI)"
-    echo "  3) Skip (I'll install manually)"
-    read -p "Select (1-3): " choice
-    
-    case $choice in
-        1)
-            INSTALL_AI="claude"
-            ;;
-        2)
-            INSTALL_AI="kimi"
-            ;;
-        3)
-            log_info "Skipping AI assistant installation"
-            ;;
-        *)
-            log_warn "Invalid choice. Skipping."
-            ;;
-    esac
-else
-    if command -v claude &> /dev/null; then
-        log_success "Claude Code already installed"
-    fi
-    if command -v kimi &> /dev/null; then
-        log_success "Kimi Code already installed"
-    fi
+# ============================================================================
+# PHASE 7: Install Syncthing
+# ============================================================================
+
+if ! command -v syncthing &> /dev/null; then
+    log_info "Installing Syncthing..."
+    # Add Syncthing repository
+    curl -s https://syncthing.net/release-key.txt | gpg --dearmor > /usr/share/keyrings/syncthing-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/syncthing-archive-keyring.gpg] https://apt.syncthing.net/ syncthing stable" > /etc/apt/sources.list.d/syncthing.list
+    apt-get update -qq
+    apt-get install -y -qq syncthing
 fi
 
-# Install selected AI assistant as the deploy user (NOT root)
-if [ "$INSTALL_AI" = "claude" ]; then
-    if su - $DEPLOY_USER -c "command -v claude" &> /dev/null; then
-        log_info "Claude Code already installed for $DEPLOY_USER"
-    else
-        log_info "Installing Claude Code as $DEPLOY_USER..."
-        su - $DEPLOY_USER -c "npm install -g @anthropic-ai/claude-code"
-        log_success "Claude Code installed"
-    fi
+log_success "Syncthing installed: $(syncthing --version | head -1)"
+
+# ============================================================================
+# PHASE 8: Security Hardening
+# ============================================================================
+
+log_info "Applying security hardening..."
+
+# SSH hardening
+cat > /etc/ssh/sshd_config.d/nazar.conf << 'EOF'
+# Disable root login
+PermitRootLogin no
+
+# Disable password authentication (keys only)
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+
+# Limit authentication attempts
+MaxAuthTries 3
+MaxSessions 5
+LoginGraceTime 30
+
+# Disable unused features
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding yes
+
+# Only allow debian and nazar users
+AllowUsers debian
+EOF
+
+# Validate SSH config
+sshd -t || { log_error "SSH config invalid!"; exit 1; }
+systemctl restart sshd
+log_success "SSH hardened"
+
+# Firewall setup
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp comment 'SSH'
+ufw --force enable
+log_success "Firewall enabled (SSH only for now)"
+
+# Fail2Ban
+cat > /etc/fail2ban/jail.local << 'EOF'
+[DEFAULT]
+bantime = 1h
+findtime = 10m
+maxretry = 3
+
+[sshd]
+enabled = true
+port = ssh
+backend = systemd
+maxretry = 3
+bantime = 3600
+EOF
+
+systemctl enable fail2ban
+systemctl restart fail2ban
+log_success "Fail2Ban enabled"
+
+# Auto-updates
+apt-get install -y -qq unattended-upgrades apt-listchanges
+
+cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'EOF'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
+    "${distro_id}:${distro_codename}-security";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+EOF
+
+cat > /etc/apt/apt.conf.d/20auto-upgrades << 'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+EOF
+
+systemctl enable unattended-upgrades
+systemctl restart unattended-upgrades
+log_success "Auto-updates enabled"
+
+# ============================================================================
+# PHASE 9: Install Tailscale
+# ============================================================================
+
+if ! command -v tailscale &> /dev/null; then
+    log_info "Installing Tailscale..."
+    curl -fsSL https://tailscale.com/install.sh | sh
 fi
 
-if [ "$INSTALL_AI" = "kimi" ]; then
-    if su - $DEPLOY_USER -c "command -v kimi" &> /dev/null; then
-        log_info "Kimi Code already installed for $DEPLOY_USER"
-    else
-        log_info "Installing Kimi Code as $DEPLOY_USER..."
-        # Install uv and kimi as deploy user
-        su - $DEPLOY_USER -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
-        su - $DEPLOY_USER -c 'export PATH="$HOME/.local/bin:$PATH" && curl -fsSL https://code.kimi.com/install.sh | bash'
-        # Ensure .local/bin is in PATH
-        if ! su - $DEPLOY_USER -c 'grep -q "$HOME/.local/bin" ~/.bashrc' 2>/dev/null; then
-            su - $DEPLOY_USER -c 'echo '"'"'export PATH="$HOME/.local/bin:$PATH"'"'"' >> ~/.bashrc'
-        fi
-        log_success "Kimi Code installed"
-    fi
-fi
+log_success "Tailscale installed"
+log_info "To enable Tailscale, run: sudo tailscale up"
 
-# Create nazar_deploy directory
-DEPLOY_DIR="/home/$DEPLOY_USER/nazar_deploy"
+# ============================================================================
+# PHASE 10: Setup Nazar User Environment
+# ============================================================================
 
-if [ -d "$DEPLOY_DIR/.git" ]; then
-    log_info "Repository already exists at $DEPLOY_DIR"
-    log_info "Pulling latest changes..."
-    cd "$DEPLOY_DIR"
-    git pull origin $(git symbolic-ref --short HEAD) 2>/dev/null || log_warn "Could not pull updates (may need manual resolution)"
-else
-    log_info "Creating deploy directory: $DEPLOY_DIR"
-    mkdir -p "$DEPLOY_DIR"
-fi
+log_info "Setting up nazar user environment..."
 
-# Warn about API keys needed
-log_info "Note: You'll need API keys for LLM providers (Anthropic, OpenAI, etc.)"
-log_info "      during the 'openclaw configure' step later."
+# Create directory structure
+mkdir -p /home/nazar/{vault,.config/openclaw,.local/state/syncthing}
+chown -R nazar:nazar /home/nazar
 
-# Ask for repository URL
+# Set up OpenClaw config directory
+export HOME=/home/nazar
+export USER=nazar
+
+# Initialize OpenClaw config (as nazar user)
+su - nazar -c "mkdir -p ~/.openclaw"
+
+# Create initial openclaw.json config
+cat > /home/nazar/.openclaw/openclaw.json << 'EOF'
+{
+  "name": "nazar",
+  "workspace": {
+    "path": "/home/nazar/vault/99-system/openclaw/workspace"
+  },
+  "sandbox": {
+    "mode": "non-main"
+  },
+  "gateway": {
+    "enabled": true,
+    "bind": "loopback",
+    "port": 18789,
+    "auth": {
+      "type": "token",
+      "token": "GENERATE_NEW_TOKEN"
+    },
+    "tailscale": {
+      "mode": "serve"
+    }
+  },
+  "models": {},
+  "channels": {},
+  "tools": {
+    "allowed": ["read_file", "write_file", "edit_file", "shell", "web_search"],
+    "sandbox": {
+      "binds": [
+        "/home/nazar/vault:/vault:rw"
+      ]
+    }
+  }
+}
+EOF
+
+# Generate secure token
+TOKEN=$(openssl rand -hex 32)
+sed -i "s/GENERATE_NEW_TOKEN/$TOKEN/" /home/nazar/.openclaw/openclaw.json
+chown -R nazar:nazar /home/nazar/.openclaw
+
+# ============================================================================
+# PHASE 11: Create Systemd Services
+# ============================================================================
+
+log_info "Creating systemd services..."
+
+# OpenClaw service (user service)
+mkdir -p /etc/systemd/user
+
+cat > /etc/systemd/user/openclaw.service << 'EOF'
+[Unit]
+Description=OpenClaw Gateway (Nazar)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/openclaw gateway --bind loopback --port 18789 --tailscale serve
+Restart=always
+RestartSec=5
+Environment="HOME=%h"
+Environment="VAULT_PATH=/home/nazar/vault"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+WorkingDirectory=/home/nazar
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/nazar/vault /home/nazar/.openclaw
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Syncthing service (user service)  
+cat > /etc/systemd/user/syncthing.service << 'EOF'
+[Unit]
+Description=Syncthing - Open Source Continuous File Synchronization
+Documentation=man:syncthing(1)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/syncthing serve --no-browser --no-restart --logflags=0
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=3 4
+WorkingDirectory=/home/nazar
+Environment="HOME=/home/nazar"
+Environment="STNORESTART=1"
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/nazar/.local/state/syncthing /home/nazar/vault
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Enable lingering for nazar user (services run without login)
+loginctl enable-linger nazar
+
+log_success "Systemd services created"
+
+# ============================================================================
+# PHASE 12: Install Voice Tools (Whisper + Piper)
+# ============================================================================
+
+log_info "Installing voice processing tools..."
+
+# Install Python and dependencies
+apt-get install -y -qq python3 python3-pip python3-venv ffmpeg
+
+# Create voice environment as nazar user
+su - nazar -c '
+    python3 -m venv ~/.local/venv-voice
+    source ~/.local/venv-voice/bin/activate
+    pip install -q openai-whisper piper-tts
+'
+
+# Download models
+mkdir -p /home/nazar/.local/share/whisper /home/nazar/.local/share/piper
+chown -R nazar:nazar /home/nazar/.local
+
+log_success "Voice tools installed"
+
+# ============================================================================
+# PHASE 13: Create Helper Scripts
+# ============================================================================
+
+cat > /home/nazar/.bashrc << 'EOF'
+# Nazar user environment
+
+# Aliases
+alias oc='openclaw'
+alias oc-logs='journalctl --user -u openclaw -f'
+alias sync-logs='journalctl --user -u syncthing -f'
+alias vault='cd ~/vault'
+
+# Environment
+export VAULT_PATH=/home/nazar/vault
+export PATH="$HOME/.local/venv-voice/bin:$PATH"
+
+# Welcome message
+echo "Welcome, Nazar!"
+echo "  Vault: ~/vault"
+echo "  OpenClaw: oc configure | oc-logs"
+echo "  Syncthing: syncthing cli | sync-logs"
+EOF
+
+chown nazar:nazar /home/nazar/.bashrc
+
+# Create admin helper scripts for debian user
+mkdir -p /home/debian/bin
+cat > /home/debian/bin/nazar-logs << 'EOF'
+#!/bin/bash
+# View OpenClaw logs
+sudo -u nazar journalctl --user -u openclaw -f
+EOF
+
+cat > /home/debian/bin/nazar-restart << 'EOF'
+#!/bin/bash
+# Restart OpenClaw service
+sudo -u nazar systemctl --user restart openclaw
+EOF
+
+cat > /home/debian/bin/nazar-status << 'EOF'
+#!/bin/bash
+# Check Nazar service status
+echo "=== OpenClaw ==="
+sudo -u nazar systemctl --user status openclaw --no-pager
 echo ""
-echo "Where should we clone the Nazar repository from?"
-echo "  1) GitHub (public repo)"
-echo "  2) Custom URL"
-echo "  3) Skip (I'll clone manually)"
-read -p "Select (1-3): " repo_choice
+echo "=== Syncthing ==="
+sudo -u nazar systemctl --user status syncthing --no-pager
+EOF
 
-case $repo_choice in
-    1)
-        read -p "Enter your GitHub username: " github_user
-        REPO_URL="https://github.com/$github_user/second-brain-stack.git"
-        ;;
-    2)
-        read -p "Enter repository URL: " REPO_URL
-        ;;
-    3)
-        REPO_URL=""
-        log_info "Skipping clone. You'll need to clone manually."
-        ;;
-esac
+chmod +x /home/debian/bin/*
+chown -R debian:debian /home/debian/bin
 
-# Clone or update repository
-if [ -n "$REPO_URL" ]; then
-    if [ -d "$DEPLOY_DIR/.git" ]; then
-        log_info "Repository exists. Checking for updates..."
-        cd "$DEPLOY_DIR"
-        git fetch origin
-        LOCAL=$(git rev-parse HEAD)
-        REMOTE=$(git rev-parse origin/$(git symbolic-ref --short HEAD))
-        if [ "$LOCAL" != "$REMOTE" ]; then
-            log_info "Updates available. Pulling..."
-            git pull origin $(git symbolic-ref --short HEAD)
-            log_success "Repository updated"
-        else
-            log_info "Repository is up to date"
-        fi
+# Add to PATH
+echo 'export PATH="$HOME/bin:$PATH"' >> /home/debian/.bashrc
+
+# ============================================================================
+# PHASE 14: Final Setup
+# ============================================================================
+
+# ============================================================================
+# PHASE 15: Security Hardening
+# ============================================================================
+
+log_info "Applying additional security hardening..."
+
+# Lock nazar user password (no password login allowed)
+passwd -l nazar 2>/dev/null || true
+
+# Restrict nazar user home directory permissions
+chmod 700 /home/nazar
+
+# Create security directories
+mkdir -p /home/nazar/.openclaw/devices
+chmod 700 /home/nazar/.openclaw
+
+# Set proper ownership
+chown -R nazar:nazar /home/nazar
+chown -R debian:debian /home/debian
+
+# ============================================================================
+# PHASE 16: Create Security Audit Script
+# ============================================================================
+
+cat > /home/debian/bin/nazar-audit << 'EOFAUDIT'
+#!/bin/bash
+# Security audit for Nazar Second Brain
+
+echo "=== Nazar Security Audit ==="
+echo ""
+
+PASS=0
+FAIL=0
+
+check() {
+    if [ $? -eq 0 ]; then
+        echo "✓ $1"
+        ((PASS++))
     else
-        log_info "Cloning repository from $REPO_URL..."
-        if git clone "$REPO_URL" "$DEPLOY_DIR" 2>/dev/null; then
-            log_success "Repository cloned"
-        else
-            log_error "Failed to clone repository"
-            log_info "You can clone manually later with:"
-            log_info "  git clone $REPO_URL $DEPLOY_DIR"
-        fi
+        echo "✗ $1"
+        ((FAIL++))
     fi
-fi
+}
 
-# Set ownership (only if running as root, otherwise assume current user owns it)
-if [ "$RUNNING_AS_ROOT" = true ] && [ "$DEPLOY_DIR" != "/home/$CURRENT_USER/nazar_deploy" ]; then
-    $SUDO_CMD chown -R "$DEPLOY_USER:$DEPLOY_USER" "$DEPLOY_DIR"
-fi
+# 1. Check root login disabled
+grep -q "PermitRootLogin no" /etc/ssh/sshd_config.d/nazar.conf 2>/dev/null
+check "Root login disabled"
 
-# Create/update setup-complete marker with timestamp
-echo "Bootstrap completed: $(date -Iseconds)" > "$DEPLOY_DIR/.bootstrap-complete"
+# 2. Check password auth disabled
+grep -q "PasswordAuthentication no" /etc/ssh/sshd_config.d/nazar.conf 2>/dev/null
+check "Password authentication disabled"
 
-# Determine if this is a first run or update
-if [ -f "$DEPLOY_DIR/.bootstrap-complete" ] && git -C "$DEPLOY_DIR" rev-parse --git-dir > /dev/null 2>&1; then
-    RUN_TYPE="update"
-else
-    RUN_TYPE="fresh"
-fi
+# 3. Check nazar has no sudo
+sudo -l -U nazar 2>&1 | grep -q "not allowed" 
+check "nazar user has no sudo access"
+
+# 4. Check nazar password locked
+passwd -S nazar 2>/dev/null | grep -q "L"
+check "nazar user password locked"
+
+# 5. Check firewall active
+ufw status | grep -q "Status: active"
+check "UFW firewall active"
+
+# 6. Check fail2ban running
+systemctl is-active fail2ban >/dev/null 2>&1
+check "Fail2Ban running"
+
+# 7. Check auto-updates enabled
+systemctl is-enabled unattended-upgrades >/dev/null 2>&1
+check "Auto-updates enabled"
+
+# 8. Check Tailscale connected
+tailscale status >/dev/null 2>&1
+check "Tailscale connected"
+
+# 9. Check home directory permissions
+stat -c "%a" /home/nazar | grep -q "700"
+check "nazar home directory restricted (700)"
+
+# 10. Check OpenClaw config permissions
+stat -c "%a" /home/nazar/.openclaw 2>/dev/null | grep -q "700"
+check "OpenClaw config directory restricted (700)"
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════════╗"
-if [ "$RUN_TYPE" = "update" ]; then
-    echo "║              Bootstrap Update Complete!                      ║"
-else
-    echo "║                   Bootstrap Complete!                        ║"
-fi
-echo "╚══════════════════════════════════════════════════════════════╝"
-echo ""
-log_success "Prerequisites installed/updated"
-log_success "Deploy directory ready: $DEPLOY_DIR"
+echo "Results: $PASS passed, $FAIL failed"
 
-# Show appropriate instructions based on current user
-if [ "$CURRENT_USER" = "$DEPLOY_USER" ]; then
-    # Already running as deploy user
-    if command -v claude &> /dev/null || [ "$INSTALL_AI" = "claude" ]; then
-        echo ""
-        log_info "To start the AI-assisted setup, run:"
-        echo ""
-        echo -e "  ${GREEN}cd ~/nazar_deploy${NC}"
-        echo -e "  ${GREEN}claude${NC}"
-        echo ""
-    fi
-    if command -v kimi &> /dev/null || [ "$INSTALL_AI" = "kimi" ]; then
-        echo ""
-        log_info "To start the AI-assisted setup with Kimi Code, run:"
-        echo ""
-        echo -e "  ${GREEN}cd ~/nazar_deploy${NC}"
-        echo -e "  ${GREEN}kimi${NC}"
-        echo ""
-    fi
-    echo "Then paste this prompt:"
-    echo ""
-    echo -e "  ${YELLOW}I'm a new user. Please read the project context and guide me${NC}"
-    echo -e "  ${YELLOW}through setting up this VPS for the Nazar Second Brain system.${NC}"
-    
-    echo ""
-    log_info "Next steps:"
-    echo "  1. Navigate to the deploy directory: cd ~/nazar_deploy"
-    echo "  2. Launch your AI assistant: claude (or kimi)"
-    echo "  3. Ask the AI to guide you through setup"
+if [ $FAIL -gt 0 ]; then
+    echo "⚠️  Some security checks failed. Review and fix manually."
+    exit 1
 else
-    # Running as root, need to switch to deploy user
-    if command -v claude &> /dev/null || [ "$INSTALL_AI" = "claude" ]; then
-        echo ""
-        log_info "To start the AI-assisted setup, run:"
-        echo ""
-        echo -e "  ${GREEN}su - $DEPLOY_USER${NC}"
-        echo -e "  ${GREEN}cd nazar_deploy${NC}"
-        echo -e "  ${GREEN}claude${NC}"
-        echo ""
-    fi
-    if command -v kimi &> /dev/null || [ "$INSTALL_AI" = "kimi" ]; then
-        echo ""
-        log_info "To start the AI-assisted setup with Kimi Code, run:"
-        echo ""
-        echo -e "  ${GREEN}su - $DEPLOY_USER${NC}"
-        echo -e "  ${GREEN}cd nazar_deploy${NC}"
-        echo -e "  ${GREEN}kimi${NC}"
-        echo ""
-    fi
-    echo "Then paste this prompt:"
-    echo ""
-    echo -e "  ${YELLOW}I'm a new user. Please read the project context and guide me${NC}"
-    echo -e "  ${YELLOW}through setting up this VPS for the Nazar Second Brain system.${NC}"
-    
-    echo ""
-    log_info "Next steps:"
-    echo "  1. Switch to the deploy user: su - $DEPLOY_USER"
-    echo "  2. Navigate to the deploy directory: cd ~/nazar_deploy"
-    echo "  3. Launch your AI assistant: claude (or kimi)"
-    echo "  4. Ask the AI to guide you through setup"
+    echo "✅ All security checks passed!"
+    exit 0
 fi
+EOFAUDIT
+
+chmod +x /home/debian/bin/nazar-audit
+chown debian:debian /home/debian/bin/nazar-audit
+
+# Run initial audit
+log_info "Running security audit..."
+bash /home/debian/bin/nazar-audit || log_warn "Some security checks failed - review manually"
+
+# Mark bootstrap complete
+echo "Bootstrap completed: $(date -Iseconds)" > /home/debian/.nazar-bootstrap
+echo "Bootstrap completed: $(date -Iseconds)" > /home/nazar/.bootstrap-complete
+
+# ============================================================================
+# COMPLETION
+# ============================================================================
 
 echo ""
-log_info "Refer to bootstrap/AI_BOOTSTRAP.md for the AI assistant's guide"
+echo "╔════════════════════════════════════════════════════════════════╗"
+echo "║                  Bootstrap Complete!                           ║"
+echo "╚════════════════════════════════════════════════════════════════╝"
+echo ""
+log_success "Users created: debian (admin), nazar (service)"
+log_success "Services ready: OpenClaw, Syncthing"
+log_success "Security: SSH hardened, Firewall active, Fail2Ban enabled"
+echo ""
+echo "Next Steps:"
+echo ""
+echo "1. Start Tailscale:"
+echo "   sudo tailscale up"
+echo ""
+echo "2. Clone this repository as debian user:"
+echo "   su - debian"
+echo "   git clone <your-repo-url> ~/nazar"
+echo ""
+echo "3. Copy vault to nazar user:"
+echo "   sudo cp -r ~/nazar/vault/* /home/nazar/vault/"
+echo "   sudo chown -R nazar:nazar /home/nazar/vault"
+echo ""
+echo "4. Start services:"
+echo "   sudo -u nazar systemctl --user enable --now syncthing"
+echo "   sudo -u nazar systemctl --user enable --now openclaw"
+echo ""
+echo "5. Configure OpenClaw:"
+echo "   sudo -u nazar openclaw configure"
+echo ""
+echo "6. Set up Syncthing:"
+echo "   - Access http://<tailscale-ip>:8384"
+echo "   - Add your devices"
+echo "   - Share ~/vault folder"
+echo ""
+echo "Access Points:"
+echo "  - Gateway: https://<tailscale-hostname>/"
+echo "  - Syncthing: http://<tailscale-ip>:8384"
+echo "  - SSH: ssh debian@<tailscale-ip>"
 echo ""

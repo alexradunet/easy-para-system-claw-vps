@@ -1,626 +1,340 @@
 # Troubleshooting
 
-Common issues and how to fix them.
+Common issues and their solutions.
 
-## Access Issues
+## Quick Diagnostics
 
-### SSH host key verification failed after VPS reinstall
-
-**Symptom:** When trying to SSH into your VPS, you see a scary warning like:
-
-```
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
-Someone could be eavesdropping on you right now (man-in-the-middle attack)!
-It is also possible that a host key has just been changed.
-```
-
-Followed by: `Host key verification failed.`
-
-**Cause:** When you reinstall your VPS (e.g., from the provider's control panel), the server gets a fresh OS installation with new SSH host keys. Your local SSH client remembers the *old* host key and warns you that it doesn't match — this is a security feature to protect against man-in-the-middle attacks.
-
-**Fix:** Remove the old host key from your local `known_hosts` file:
+Run this to check everything:
 
 ```bash
-# On Windows (PowerShell/Git Bash)
-ssh-keygen -R 51.38.141.38
-
-# On Linux/macOS
-ssh-keygen -R <vps-ip-address>
-```
-
-Then reconnect and accept the new key:
-
-```bash
-ssh debian@51.38.141.38
-# Type "yes" when prompted to confirm the new host key
-```
-
-**What this means:**
-- SSH stores server fingerprints in `~/.ssh/known_hosts` to verify identity
-- After a VPS reinstall, the server legitimately has a new identity
-- The warning is expected and safe to bypass in this specific case
-- The `-R` flag removes all entries for that host from `known_hosts`
-
----
-
-### Can't reach gateway via Tailscale
-
-**Symptom:** `https://<tailscale-hostname>/` not loading.
-
-**Cause:** The gateway uses integrated Tailscale Serve mode (`tailscale: { mode: "serve" }` in docker-compose) and manages its own proxy automatically. No manual `tailscale serve` is needed for the gateway.
-
-**Check:**
-```bash
-# Is the gateway container running?
-docker compose ps nazar-gateway
-
-# Check gateway logs for Tailscale Serve errors
-docker compose logs nazar-gateway | grep -i tailscale
-
-# Verify the container is using host networking
-docker inspect nazar-gateway --format='{{.HostConfig.NetworkMode}}'
-# Expected: host
-```
-
-**Fix:** If the gateway container is running but not reachable, restart it to re-establish the Tailscale Serve proxy:
-```bash
-docker compose restart nazar-gateway
-```
-
----
-
-### Locked out of SSH (Tailscale down)
-
-**Symptom:** Can't SSH via Tailscale IP, Tailscale appears down on VPS.
-
-**Fix:**
-1. Use your VPS provider's web console (OVH KVM, Hetzner Console)
-2. Log in as `debian`
-3. Re-enable public SSH: `sudo ufw allow 22/tcp`
-4. SSH in normally: `ssh debian@<public-ip>`
-5. Fix Tailscale: `sudo tailscale up`
-6. Verify Tailscale SSH: `ssh debian@<tailscale-ip>` (from another terminal)
-7. Re-lock: `sudo bash lock-ssh-to-tailscale.sh`
-
-### Can't reach gateway (container running)
-
-**Symptom:** `https://<tailscale-hostname>/` not loading, but container is running.
-
-**Check:**
-```bash
-# Is Tailscale running?
-tailscale status
-
-# Is the container running?
-docker compose ps
-
-# Is the gateway container using host networking?
-docker inspect nazar-gateway --format='{{.HostConfig.NetworkMode}}'
-# Expected: host
-```
-
-**Fix:** The gateway manages its own Tailscale Serve proxy. Restart the container:
-```bash
-docker compose restart nazar-gateway
-```
-
-### Control UI shows "pairing required"
-
-**Symptom:** Opening `https://<tailscale-hostname>/` in a browser shows a pairing/approval prompt instead of the Control UI.
-
-**Cause:** This is expected on first connection from a new browser/device. The gateway requires device approval before granting access.
-
-**Fix:**
-
-```bash
-# SSH into the VPS, then:
-openclaw devices list                     # List pending pairing requests
-openclaw devices approve <request-id>     # Approve the pending request
-```
-
-After approval, refresh the browser. The device is remembered for subsequent visits.
-
----
-
-### VSCode Remote SSH fails with "TCP port forwarding disabled"
-
-**Symptom:** VSCode Remote SSH connection fails with `administratively prohibited` or `AllowTcpForwarding` error.
-
-**Cause:** SSH hardening disabled TCP forwarding, which VSCode needs for its SOCKS proxy.
-
-**Fix:**
-```bash
-sudo sed -i 's/AllowTcpForwarding no/AllowTcpForwarding yes/' /etc/ssh/sshd_config.d/hardened.conf
-sudo sshd -t && sudo systemctl restart sshd
-```
-
-## Container Issues
-
-### Container won't start
-
-**Check logs:**
-```bash
-cd /srv/nazar
-docker compose logs nazar-gateway
-```
-
-**Common causes:**
-- `.env` file missing or malformed
-- Port already in use: `ss -tlnp | grep <port>`
-- Docker daemon not running: `sudo systemctl start docker`
-
-### Gateway container unhealthy
-
-```bash
-docker inspect nazar-gateway --format='{{.State.Health.Status}}'
-docker inspect nazar-gateway --format='{{range .State.Health.Log}}{{.Output}}{{end}}' | tail -5
-```
-
-**Fix:** Usually a startup timing issue. Wait 30 seconds or restart:
-```bash
-docker compose restart nazar-gateway
-```
-
-### Build fails (out of memory)
-
-**Symptom:** `pnpm install` or model download crashes during `docker compose build`.
-
-**Fix:** Add swap:
-```bash
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-# Then retry
-docker compose build
-```
-
-### Container can't write to vault
-
-**Symptom:** Permission denied errors in gateway logs.
-
-**Fix:**
-```bash
-# Ensure vault group permissions are correct
-sudo chown -R debian:vault /srv/nazar/vault
-sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
-sudo find /srv/nazar/vault -type f -exec chmod 0664 {} +
-```
-
-The container runs as uid 1000 — which must be a member of the `vault` group. The setgid bit on directories ensures new files inherit the group.
-
-## Vault Sync Issues
-
-### Post-receive hook fails with "Permission denied"
-
-**Symptom:** After pushing to the bare repo, the VPS working copy is not updated. The git-sync.log shows:
-```
-error: unable to unlink old 'filename': Permission denied
-```
-
-**Cause:** The OpenClaw agent runs inside a Docker container as root. Files it creates in the vault are owned by root, not the `debian:vault` user. When the post-receive hook tries to update the working copy, it can't modify root-owned files.
-
-**Fix:** The post-receive hook has been updated to automatically fix permissions. If you're still seeing issues, manually fix:
-
-```bash
-ssh debian@100.87.216.31
-
-# Fix ownership and permissions
-sudo chown -R debian:vault /srv/nazar/vault
-sudo chmod -R u+rw /srv/nazar/vault
-sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
-```
-
-**Prevention:** The updated post-receive hook now includes:
-```bash
-# Fix permissions first (files may be owned by root from Docker container)
-chown -R debian:vault "$VAULT_DIR" 2>/dev/null || true
-chmod -R u+rw "$VAULT_DIR" 2>/dev/null || true
-```
-
----
-
-### Git push rejected
-
-**Symptom:** `git push` to VPS fails with "non-fast-forward" error.
-
-**Cause:** The auto-commit cron on the VPS committed agent writes, creating commits your local branch doesn't have.
-
-**Fix:**
-```bash
-# Pull first, then push
-git pull --rebase origin main
-git push origin main
-```
-
-### Merge conflicts after pull
-
-**Symptom:** `git pull` shows merge conflicts.
-
-**Cause:** Both you and the agent edited the same file in the same area.
-
-**Fix:**
-```bash
-# See conflicted files
-git status
-
-# Resolve conflicts in your editor, then:
-git add <resolved-files>
-git commit
-git push
-```
-
-### Agent writes not appearing
-
-**Symptom:** The agent made changes to vault files but they don't show up when you `git pull`.
-
-**Check:**
-```bash
-# On VPS: are there uncommitted changes?
-git -C /srv/nazar/vault status
-
-# Is the cron running?
-crontab -u debian -l | grep vault-auto-commit
-
-# Check the sync log
-tail -20 /srv/nazar/data/git-sync.log
-```
-
-**Fix:** If the cron isn't running, reinstall it:
-```bash
-sudo bash /srv/nazar/deploy/scripts/setup-vps.sh
-```
-
-Or manually trigger:
-```bash
-sudo -u debian /srv/nazar/scripts/vault-auto-commit.sh
-```
-
----
-
-### Git sync failing: "failed to push some refs"
-
-**Symptom:** Agent writes are committed locally on VPS but not pushed to bare repo. Sync log shows:
-```
-error: failed to push some refs to '/srv/nazar/vault.git'
-Updates were rejected because the remote contains work that you do not have locally
-```
-
-**Cause:** The auto-commit script commits but fails to push due to divergent branches between VPS working copy and bare repo. This happens when:
-1. Local commits push to bare repo
-2. Post-receive hook updates VPS working copy
-3. VPS auto-commit creates new commits on top
-4. Push fails because bare repo has commits VPS doesn't know about
-
-**Fix:**
-
-```bash
-# SSH into VPS
-ssh debian@100.87.216.31
-
-# Check VPS status
-cd /srv/nazar/vault
-git status  # Will show "ahead by X commits"
-
-# Fix permissions first (root may own some files)
-sudo chown -R debian:vault /srv/nazar/vault
-sudo chmod -R u+rw /srv/nazar/vault
-
-# Reset VPS working copy to match bare repo
-git fetch origin
-git reset --hard origin/main
-
-# Update auto-commit script to pull before push
-cat > /srv/nazar/scripts/vault-auto-commit.sh << 'EOF'
 #!/bin/bash
-cd /srv/nazar/vault || exit 1
+echo "=== Tailscale ==="
+tailscale status 2>/dev/null || echo "Tailscale not running"
 
-# Check if there are any changes
-if git diff --quiet && git diff --cached --quiet; then
-    exit 0
-fi
+echo ""
+echo "=== Services ==="
+sudo -u nazar systemctl --user is-active openclaw 2>/dev/null && echo "✓ OpenClaw" || echo "✗ OpenClaw"
+sudo -u nazar systemctl --user is-active syncthing 2>/dev/null && echo "✓ Syncthing" || echo "✗ Syncthing"
 
-# Stage and commit changes
-git add -A
-git commit -m "Auto-commit-by-Nazar"
+echo ""
+echo "=== Firewall ==="
+sudo ufw status | head -5
 
-# Pull first (with rebase) to incorporate any remote changes, then push
-git pull --rebase origin main || git pull origin main
-git push origin main
-EOF
-chmod +x /srv/nazar/scripts/vault-auto-commit.sh
+echo ""
+echo "=== Disk Space ==="
+df -h /home/nazar | tail -1
+
+echo ""
+echo "=== Memory ==="
+free -h | grep Mem
 ```
 
-**Prevention:** The updated auto-commit script now pulls before pushing to handle divergent branches automatically.
+## Syncthing Issues
 
----
+### Devices Not Connecting
 
-### Permission denied on git operations
+**Symptom**: Devices show as "Disconnected" in Syncthing GUI
 
-**Symptom:** Git commands fail with "Permission denied" or "unable to unlink" errors.
-
-**Cause:** Files in vault are owned by root (from Docker container writes) instead of `debian:vault`.
-
-**Fix:**
+**Check**:
 ```bash
-# Fix ownership
-sudo chown -R debian:vault /srv/nazar/vault
-sudo chmod -R u+rw /srv/nazar/vault
+# 1. Tailscale connectivity
+tailscale status
+ping <other-device-tailscale-ip>
 
-# Fix directory permissions (setgid for group inheritance)
-sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
-sudo find /srv/nazar/vault -type f -exec chmod 0664 {} +
+# 2. Syncthing is running
+sudo -u nazar systemctl --user status syncthing
+
+# 3. Device IDs are correct
+sudo -u nazar syncthing cli show system | grep myID
 ```
 
-Or manually trigger:
+**Fix**:
+- Ensure Tailscale is running on both devices
+- Re-add device IDs if changed
+- Check firewall: `sudo ufw status`
+
+### Sync Conflicts
+
+**Symptom**: Files like `note.md.sync-conflict-20260211-143022.md`
+
+**Fix**:
+1. Open both files in Obsidian
+2. Compare and merge changes manually
+3. Delete the `.sync-conflict-*` file
+
+**Prevent**:
+- Enable "Auto Save" in Obsidian
+- Avoid editing the same file simultaneously on multiple devices
+
+### Slow Sync
+
+**Check**:
 ```bash
-sudo -u debian /srv/nazar/scripts/vault-auto-commit.sh
+# Connection type (relay vs direct)
+sudo -u nazar syncthing cli show connections | grep type
+
+# Should show "type": "tcp-client" or "type": "tcp-server"
+# "type": "relay-client" means using relay (slower)
 ```
 
-### Post-receive hook not updating working copy
+**Fix**:
+- Ensure both devices on same Tailscale network
+- Check "Allow Direct Connections" in device settings
 
-**Symptom:** You pushed to `vault.git` but `/srv/nazar/vault/` doesn't reflect the changes.
+## OpenClaw Issues
 
-**Check:**
+### Gateway Won't Start
+
+**Symptom**: `systemctl --user status openclaw` shows failed
+
+**Check**:
 ```bash
-# Check the sync log
-tail -20 /srv/nazar/data/git-sync.log
+# Logs
+sudo -u nazar journalctl --user -u openclaw -n 50
 
-# Is the hook executable?
-ls -la /srv/nazar/vault.git/hooks/post-receive
+# Config validity
+sudo -u nazar jq . ~/.openclaw/openclaw.json
+
+# Port in use
+sudo ss -tlnp | grep 18789
 ```
 
-**Fix:** Reinstall the hook:
+**Common Fixes**:
+
+1. **Invalid JSON config**:
+   ```bash
+   # Backup and reset
+   sudo -u nazar cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
+   sudo -u nazar openclaw configure
+   ```
+
+2. **Port already in use**:
+   ```bash
+   # Find and kill process
+   sudo ss -tlnp | grep 18789
+   sudo kill <PID>
+   # Then restart
+   sudo -u nazar systemctl --user restart openclaw
+   ```
+
+3. **Missing dependencies**:
+   ```bash
+   # Reinstall OpenClaw
+   sudo npm install -g openclaw@latest
+   ```
+
+### Can't Access Web UI
+
+**Symptom**: `https://<tailscale-hostname>/` doesn't load
+
+**Check**:
 ```bash
-sudo cp /srv/nazar/deploy/scripts/vault-post-receive-hook /srv/nazar/vault.git/hooks/post-receive
-sudo chmod +x /srv/nazar/vault.git/hooks/post-receive
-sudo chown debian:vault /srv/nazar/vault.git/hooks/post-receive
+# 1. Gateway is running
+sudo -u nazar systemctl --user status openclaw
+
+# 2. Listening on localhost
+sudo -u nazar ss -tlnp | grep 18789
+# Should show 127.0.0.1:18789
+
+# 3. Tailscale serve is working
+tailscale serve status
+
+# 4. Tailscale is connected
+tailscale status
 ```
 
-### Permission errors in vault
-
-**Symptom:** Git operations fail with permission errors.
-
-**Fix:**
+**Fix**:
 ```bash
-# Ensure vault group ownership and setgid
-sudo chown -R debian:vault /srv/nazar/vault /srv/nazar/vault.git
-sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
-sudo find /srv/nazar/vault.git -type d -exec chmod 2775 {} +
+# Restart Tailscale serve
+sudo tailscale serve --https=443 off 2>/dev/null || true
+sudo -u nazar systemctl --user restart openclaw
 
-# Verify git shared repo config
-git -C /srv/nazar/vault config core.sharedRepository group
+# Check Tailscale HTTPS
+tailscale cert <hostname>.<tailnet>.ts.net
 ```
 
-## Voice Processing Issues
+### Device Pairing Issues
 
-### Transcription not working
+**Symptom**: "Pairing required" message in browser
 
+**Fix**:
 ```bash
-# Check if voice tools are in the container
-docker compose exec nazar-gateway python3 -c "from faster_whisper import WhisperModel; print('ok')"
+# List pending devices
+sudo -u nazar openclaw devices list
 
-# Check if models exist
-docker compose exec nazar-gateway ls /opt/models/whisper/
-docker compose exec nazar-gateway ls /opt/models/piper/
-```
-
-If models are missing, rebuild the image:
-```bash
-docker compose build --no-cache nazar-gateway
-docker compose up -d
-```
-
-### High memory during transcription
-
-Whisper `small` model uses ~1GB RAM. On low-memory VPS:
-- Ensure swap is enabled
-- Use `tiny` or `base` model instead of `small`
-
-## Configuration Issues
-
-### Agent not loading workspace
-
-```bash
-# Check workspace mount
-docker compose exec nazar-gateway ls /home/node/.openclaw/workspace/
-# Should show: SOUL.md, AGENTS.md, USER.md, etc.
-
-# If empty, check the volume mount path
-grep workspace docker-compose.yml
-```
-
-The workspace path depends on `OPENCLAW_WORKSPACE_PATH` in `.env` (defaults to `99-system/openclaw/workspace`).
-
-### Gateway crashes with "Config invalid"
-
-**Symptom:** `nazar-gateway` keeps restarting. Logs show `Config invalid` and `Unrecognized key`.
-
-**Check:**
-```bash
-docker logs nazar-gateway 2>&1 | grep -A2 "Config invalid"
-```
-
-**Fix:** OpenClaw evolves and may drop config keys between versions. Run the built-in doctor:
-```bash
-docker compose exec nazar-gateway openclaw doctor --fix
-docker compose restart nazar-gateway
-```
-
-Or manually edit `/srv/nazar/data/openclaw/openclaw.json` to remove the offending keys listed in the error.
-
-**Known invalid keys:** `tools.elevated.ask` (removed in recent OpenClaw versions).
-
----
-
-### API key not working
-
-API keys are managed by `openclaw configure`. To re-run configuration:
-
-```bash
-openclaw configure
-```
-
-To verify the container can reach the API:
-
-```bash
-openclaw doctor --fix
-```
-
-### Changes to .env not taking effect
-
-`.env` is read at container start. After editing:
-```bash
-cd /srv/nazar && docker compose restart
-```
-
-## Security Issues
-
-### Suspicious SSH attempts
-
-```bash
-# Check Fail2Ban status
-sudo fail2ban-client status sshd
-
-# View banned IPs
-sudo fail2ban-client get sshd banip
-
-# Check auth log
-sudo journalctl -u sshd --since "1 hour ago" | grep "Failed"
-```
-
-### Run a full security audit
-
-```bash
-sudo bash /srv/nazar/vault/99-system/openclaw/skills/vps-setup/scripts/audit-vps.sh
-```
-
----
-
-## Device Pairing Issues
-
-### "pairing required" when accessing Control UI
-
-**Symptom:** Browser shows "pairing required" or WebSocket disconnects with code 1008.
-
-**Cause:** OpenClaw requires explicit device approval for security. New browsers/devices must be approved before accessing the gateway.
-
-**Fix:**
-
-```bash
-# SSH into VPS and list pending devices
-ssh debian@<tailscale-ip>
-dopenclaw devices list
-
-# Approve by request ID
-dopenclaw devices approve <request-id>
-
-# Restart gateway to apply
-drestart
-```
-
-Or manually edit the device files:
-
-```bash
-# View pending request
-sudo cat /srv/nazar/data/openclaw/devices/pending.json
-
-# Move to paired (using Python)
-sudo python3 << 'PYEOF'
-import json
-with open('/srv/nazar/data/openclaw/devices/pending.json', 'r') as f:
-    pending = json.load(f)
-with open('/srv/nazar/data/openclaw/devices/paired.json', 'r') as f:
-    paired = json.load(f)
-for device_id, device_info in pending.items():
-    paired[device_id] = device_info
-    print(f'Approved: {device_id}')
-with open('/srv/nazar/data/openclaw/devices/paired.json', 'w') as f:
-    json.dump(paired, f, indent=2)
-with open('/srv/nazar/data/openclaw/devices/pending.json', 'w') as f:
-    json.dump({}, f)
-PYEOF
+# Approve
+sudo -u nazar openclaw devices approve <request-id>
 
 # Restart gateway
-drestart
+sudo -u nazar systemctl --user restart openclaw
 ```
 
----
+### Voice Processing Not Working
 
-## OpenClaw CLI Issues
+**Symptom**: Voice messages not transcribed
 
-### "openclaw: command not found"
-
-**Symptom:** Running `openclaw` gives command not found.
-
-**Cause:** OpenClaw runs inside the Docker container, not on the host.
-
-**Fix:** Use the `dopenclaw` alias (configured during setup):
-
+**Check**:
 ```bash
-# Instead of:
-openclaw doctor
+# Voice venv exists
+ls -la /home/nazar/.local/venv-voice/
 
-# Use:
-dopenclaw doctor
+# Whisper and Piper installed
+sudo -u nazar bash -c 'source ~/.local/venv-voice/bin/activate && which whisper'
+sudo -u nazar bash -c 'source ~/.local/venv-voice/bin/activate && which piper'
 
-# Or the full docker command:
-docker compose -f /srv/nazar/deploy/docker-compose.yml exec openclaw-gateway npx openclaw doctor
+# Models exist
+ls /home/nazar/.local/share/whisper/
 ```
 
-### "exec failed: executable file not found"
-
-**Symptom:** `docker compose exec openclaw-gateway openclaw` fails.
-
-**Cause:** The `openclaw` binary isn't in the container's default PATH.
-
-**Fix:** Use `npx openclaw`:
-
+**Fix**:
 ```bash
-docker compose -f /srv/nazar/deploy/docker-compose.yml exec openclaw-gateway npx openclaw <command>
+# Reinstall voice tools
+sudo -u nazar bash -c '
+    python3 -m venv ~/.local/venv-voice
+    source ~/.local/venv-voice/bin/activate
+    pip install openai-whisper piper-tts
+'
 ```
 
-Or use the alias:
+## Tailscale Issues
+
+### Can't SSH via Tailscale
+
+**Symptom**: `ssh debian@<tailscale-ip>` hangs or fails
+
+**Check**:
 ```bash
-dopenclaw <command>
+# Tailscale status
+tailscale status
+
+# IP is correct
+tailscale ip -4
+
+# Firewall allows SSH on tailscale0
+sudo ufw status | grep tailscale0
 ```
 
-## General Diagnostics
-
-### Quick status check
-
+**Fix**:
 ```bash
-# Everything at a glance
-echo "=== Tailscale ===" && tailscale status
-echo "=== Docker ===" && cd /srv/nazar && docker compose ps
-echo "=== Firewall ===" && sudo ufw status
-echo "=== Fail2Ban ===" && sudo fail2ban-client status sshd
-echo "=== Vault Git ===" && git -C /srv/nazar/vault log --oneline -3
-echo "=== Sync Log ===" && tail -5 /srv/nazar/data/git-sync.log
-echo "=== Disk ===" && df -h /
-echo "=== Memory ===" && free -h
+# Restart Tailscale
+sudo systemctl restart tailscaled
+
+# Re-authenticate if needed
+sudo tailscale up --force-reauth
+
+# If locked out, use provider console to access and fix
 ```
 
-### Collect debug info
+### Tailscale Not Connecting
 
+**Symptom**: `tailscale status` shows "Logged out"
+
+**Fix**:
 ```bash
-# Save to a file for sharing
-{
-  echo "=== Date ===" && date
-  echo "=== Uptime ===" && uptime
-  echo "=== Memory ===" && free -h
-  echo "=== Disk ===" && df -h /
-  echo "=== Docker ===" && docker compose ps 2>/dev/null
-  echo "=== Tailscale ===" && tailscale status 2>/dev/null
-  echo "=== UFW ===" && sudo ufw status
-  echo "=== Vault Git ===" && git -C /srv/nazar/vault log --oneline -5 2>/dev/null
-  echo "=== Sync Log ===" && tail -10 /srv/nazar/data/git-sync.log 2>/dev/null
-  echo "=== Recent gateway logs ===" && docker compose logs --tail 20 nazar-gateway 2>/dev/null
-} > /tmp/nazar-debug.txt 2>&1
+# Authenticate
+sudo tailscale up
 
-cat /tmp/nazar-debug.txt
+# Or if already configured
+sudo tailscale up --operator=debian
 ```
+
+## Permission Issues
+
+### Vault Not Writable
+
+**Symptom**: OpenClaw can't write to vault
+
+**Fix**:
+```bash
+sudo chown -R nazar:nazar /home/nazar/vault
+chmod -R u+rw /home/nazar/vault
+```
+
+### Can't Access OpenClaw Config
+
+**Fix**:
+```bash
+sudo chown -R nazar:nazar /home/nazar/.openclaw
+chmod -R u+rw /home/nazar/.openclaw
+```
+
+## System Issues
+
+### Out of Disk Space
+
+**Check**:
+```bash
+df -h /home/nazar
+du -sh /home/nazar/vault/*
+```
+
+**Fix**:
+```bash
+# Clean old Syncthing versions
+sudo -u nazar find /home/nazar/vault -name "*.sync-conflict-*" -delete
+
+# Check Syncthing versioning settings
+# Reduce "Keep Versions" in folder settings
+```
+
+### High Memory Usage
+
+**Check**:
+```bash
+free -h
+ps aux --sort=-%mem | head -10
+```
+
+**Common causes**:
+- Whisper model too large (use `small` or `base`)
+- Syncthing scanning large files
+- OpenClaw subagent memory leak
+
+**Fix**:
+```bash
+# Restart services
+sudo -u nazar systemctl --user restart openclaw
+sudo -u nazar systemctl --user restart syncthing
+
+# Use smaller Whisper model (edit voice skill config)
+```
+
+### System Won't Boot
+
+**If you can't access the VPS:**
+1. Use provider's web console (KVM/VNC)
+2. Check disk space from recovery mode
+3. Check logs: `journalctl -xb`
+
+**Common boot issues**:
+- Full disk (clean up from recovery)
+- Failed systemd service (mask it: `systemctl mask <service>`)
+
+## Getting Help
+
+If none of these solutions work:
+
+1. **Check logs**:
+   ```bash
+   # OpenClaw
+   sudo -u nazar journalctl --user -u openclaw -n 100
+   
+   # Syncthing
+   sudo -u nazar journalctl --user -u syncthing -n 100
+   
+   # System
+   sudo journalctl -n 100
+   ```
+
+2. **Check OpenClaw documentation**:
+   ```bash
+   openclaw --help
+   openclaw doctor
+   ```
+
+3. **Restart everything** (nuclear option):
+   ```bash
+   sudo systemctl restart tailscaled
+   sudo -u nazar systemctl --user restart syncthing
+   sudo -u nazar systemctl --user restart openclaw
+   ```

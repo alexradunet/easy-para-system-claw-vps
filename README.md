@@ -1,43 +1,17 @@
 # Second Brain — AI-Assisted Personal Knowledge Management
 
-An AI-assisted personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running on OpenClaw, synchronized across devices via Git, and hosted on a hardened Debian VPS behind Tailscale.
+An AI-assisted personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running on OpenClaw, synchronized across devices via Syncthing, and hosted on a hardened Debian VPS behind Tailscale.
 
 ---
 
-## 🚀 Quick Start (AI-Assisted VPS Setup)
-
-The fastest way to get started is using **Claude Code** or **Kimi Code** directly on your VPS for an interactive, guided setup:
+## 🚀 Quick Start
 
 ```bash
-# 1. Buy a VPS (Hetzner, OVH, DigitalOcean - Debian 13 or Ubuntu 22.04+)
-# 2. SSH into your fresh VPS
-ssh root@<your-vps-ip>
+# On your fresh Debian/Ubuntu VPS (as root):
+curl -fsSL https://raw.githubusercontent.com/<user>/second-brain/main/bootstrap/bootstrap.sh | bash
 
-# 3. Run the bootstrap script
-curl -fsSL https://raw.githubusercontent.com/alexradunet/second-brain-stack/main/bootstrap/bootstrap.sh | bash
-
-# 4. Follow the instructions to launch your AI assistant
-#    The AI will guide you through the complete setup interactively!
+# Then follow the on-screen instructions
 ```
-
-**Or manually:**
-
-```bash
-# Install Node.js and an AI assistant
-apt update && apt install -y nodejs npm
-curl -fsSL https://claude.ai/install.sh | sh  # or install Kimi Code
-
-# Clone this repo
-cd ~ && mkdir -p nazar_deploy && cd nazar_deploy
-git clone https://github.com/alexradunet/second-brain-stack.git .
-
-# Launch the AI assistant and ask for guidance
-claude
-# Then type: "I'm a new user. Please guide me through setting up this VPS."
-```
-
-📖 **[Complete Bootstrap Guide →](docs/bootstrap-guide.md)**  
-🤖 **[AI Assistant Instructions →](bootstrap/AI_BOOTSTRAP.md)**
 
 ---
 
@@ -45,124 +19,208 @@ claude
 
 Three integrated layers working together:
 
-1. **Content Layer** (`vault/`) — An Obsidian vault organized with the PARA method (Projects, Areas, Resources, Archive)
-2. **Intelligence Layer** (OpenClaw Gateway) — The Nazar AI agent that processes voice messages, manages daily journals, and answers questions about your notes
-3. **Infrastructure Layer** (`deploy/`) — Docker containers running on a hardened VPS with Git-based vault synchronization
+1. **Content Layer** (`vault/`) — An Obsidian vault organized with the PARA method
+2. **Intelligence Layer** (OpenClaw) — The Nazar AI agent that manages your daily journal and answers questions
+3. **Infrastructure Layer** — Simple, secure services running directly on the VPS (no Docker)
 
 ```
 second-brain/
 ├── vault/                ← Obsidian vault (PARA structure + agent config)
 │   ├── 00-inbox/         ← Quick capture
 │   ├── 01-daily-journey/ ← Daily notes (YYYY/MM-MMMM/YYYY-MM-DD.md)
-│   ├── 02-projects/      ← Active projects with goals/deadlines
-│   ├── 03-areas/         ← Life areas requiring ongoing attention
+│   ├── 02-projects/      ← Active projects
+│   ├── 03-areas/         ← Life areas
 │   ├── 04-resources/     ← Reference material
-│   ├── 05-arhive/        ← Completed/inactive items
+│   ├── 05-archive/       ← Completed items
 │   └── 99-system/        ← Agent workspace, skills, templates
-├── deploy/               ← Docker stack for VPS deployment
-│   ├── docker-compose.yml
-│   ├── Dockerfile.nazar
-│   └── scripts/          ← VPS setup scripts
-├── bootstrap/            ← AI-assisted setup files
-│   ├── bootstrap.sh      ← One-liner bootstrap script
-│   └── AI_BOOTSTRAP.md   ← Instructions for AI assistants
-└── docs/                 ← Project documentation
+├── nazar/                ← Service user configuration
+│   ├── config/           ← OpenClaw configuration templates
+│   └── scripts/          ← Setup helpers
+├── system/               ← System administration scripts
+│   ├── scripts/          ← Admin helper scripts
+│   └── docs/             ← Admin documentation
+├── bootstrap/            ← Bootstrap files for initial setup
+└── docs/                 ← User documentation
 ```
+
+---
+
+## Architecture Overview
+
+### User Model
+
+| User | Purpose | Permissions |
+|------|---------|-------------|
+| `debian` | System administrator | sudo access, SSH login |
+| `nazar` | Service user | No sudo, runs OpenClaw + Syncthing |
+
+### Services
+
+| Service | Runs As | Purpose |
+|---------|---------|---------|
+| OpenClaw Gateway | `nazar` | AI agent gateway (port 18789, Tailscale serve) |
+| Syncthing | `nazar` | Vault synchronization (port 8384) |
+
+### Data Locations
+
+| Path | Purpose | Owner |
+|------|---------|-------|
+| `/home/nazar/vault/` | Obsidian vault | `nazar:nazar` |
+| `/home/nazar/.openclaw/` | OpenClaw config + state | `nazar:nazar` |
+| `/home/nazar/.local/state/syncthing/` | Syncthing data | `nazar:nazar` |
 
 ---
 
 ## Key Features
 
-| Feature                  | Description                                            |
-| ------------------------ | ------------------------------------------------------ |
-| **🔒 Secure by Default** | Tailscale VPN + hardened SSH + no public ports         |
-| **🎙️ Voice Processing**  | Whisper STT + Piper TTS for voice notes                |
-| **📱 Multi-Device Sync** | Git-based sync across laptop, phone, tablet            |
-| **🤖 AI Agent**          | Nazar manages your daily journal and answers questions |
-| **📓 PARA Method**       | Organized by Projects, Areas, Resources, Archive       |
-| **🐳 Containerized**     | Single Docker container, easy to deploy                |
+| Feature | Description |
+|---------|-------------|
+| **🔒 Secure by Default** | Tailscale VPN + hardened SSH + no public ports |
+| **🎙️ Voice Processing** | Whisper STT + Piper TTS for voice notes |
+| **📱 Multi-Device Sync** | Syncthing (real-time, conflict-resistant) |
+| **🤖 AI Agent** | Nazar manages your daily journal and answers questions |
+| **📓 PARA Method** | Organized by Projects, Areas, Resources, Archive |
+| **🚀 Simple** | No Docker, direct Node.js/Python execution |
+
+---
+
+## Setup Guide
+
+### 1. Bootstrap the VPS
+
+Run the bootstrap script on a fresh Debian 13 or Ubuntu 22.04+ VPS:
+
+```bash
+# As root
+curl -fsSL https://raw.githubusercontent.com/<user>/second-brain/main/bootstrap/bootstrap.sh | bash
+```
+
+This will:
+- Create `debian` (admin) and `nazar` (service) users
+- Install Node.js 22, OpenClaw, Syncthing, Tailscale
+- Harden SSH and configure firewall
+- Set up systemd user services
+
+### 2. Configure Tailscale
+
+```bash
+sudo tailscale up
+# Authenticate in your browser when prompted
+```
+
+### 3. Deploy the Vault
+
+Clone this repository and copy the vault:
+
+```bash
+# As debian user
+su - debian
+git clone <your-repo-url> ~/nazar-deploy
+cd ~/nazar-deploy
+
+# Copy vault to nazar user
+sudo cp -r vault/* /home/nazar/vault/
+sudo chown -R nazar:nazar /home/nazar/vault
+```
+
+### 4. Start Syncthing
+
+```bash
+sudo bash nazar/scripts/setup-syncthing.sh
+```
+
+Then access the Syncthing GUI at `http://<tailscale-ip>:8384` to:
+1. Set admin username/password
+2. Add your devices (laptop, phone)
+3. Share the vault folder
+
+### 5. Start OpenClaw
+
+```bash
+sudo bash nazar/scripts/setup-openclaw.sh
+
+# Configure models and channels
+sudo -u nazar openclaw configure
+```
+
+Access the gateway at `https://<tailscale-hostname>/`
+
+---
+
+## Daily Usage
+
+### From Your Devices
+
+1. **Install Syncthing** on laptop and phone
+2. **Add the VPS device** (get ID from VPS: `sudo -u nazar syncthing cli show system`)
+3. **Share your vault folder** with the VPS
+4. **Open in Obsidian** — changes sync instantly
+
+### Voice Notes
+
+Send a voice message to your agent via WhatsApp/Telegram → Nazar transcribes it → Saved to today's daily note with timestamp.
+
+### Admin Commands (as debian user)
+
+```bash
+# View logs
+nazar-logs          # OpenClaw logs
+journalctl --user -u syncthing -f  # Syncthing logs (as nazar)
+
+# Restart services
+nazar-restart       # Restart OpenClaw
+sudo -u nazar systemctl --user restart syncthing
+
+# Check status
+nazar-status        # Service status
+```
 
 ---
 
 ## Documentation
 
-| Document                                       | Description                                   |
-| ---------------------------------------------- | --------------------------------------------- |
-| **[Bootstrap Guide](docs/bootstrap-guide.md)** | 🌟 AI-assisted VPS setup walkthrough          |
-| **[VPS Cheatsheet](docs/vps-setup-cheatsheet.md)** | Quick reference for VPS management        |
-| **[Architecture](docs/architecture.md)**       | System design, components, data flow          |
-| **[Vault Structure](docs/vault-structure.md)** | PARA vault layout and conventions             |
-| **[Agent System](docs/agent.md)**              | Nazar agent — workspace, personality, memory  |
-| **[Skills Reference](docs/skills.md)**         | Available skills (obsidian, voice, vps-setup) |
-| **[Deployment Guide](docs/deployment.md)**     | Traditional scripted deployment               |
-| **[Security Model](docs/security.md)**         | Hardening, Tailscale, secrets management      |
-| **[Git Sync](docs/git-sync.md)**               | Multi-device vault synchronization            |
-| **[Troubleshooting](docs/troubleshooting.md)** | Common issues and fixes                       |
-
----
-
-## Usage Patterns
-
-### Daily Capture (Voice)
-
-1. Send a voice message to your agent (WhatsApp, Telegram, etc.)
-2. Nazar transcribes it with Whisper
-3. Text is appended to today's daily note with timestamp
-4. Auto-syncs to all your devices
-
-### Daily Journal
-
-1. Open Obsidian on any device
-2. Navigate to `01-daily-journey/YYYY/MM-MMMM/YYYY-MM-DD.md`
-3. Write or review your day's notes
-4. Git sync happens automatically every 5 minutes
-
-### Knowledge Queries
-
-Ask Nazar about anything in your vault:
-
-- "What did I decide about X last month?"
-- "Summarize my notes from the project meeting"
-- "What are my active projects with deadlines this week?"
-
----
-
-## Technology Stack
-
-| Component            | Technology                             |
-| -------------------- | -------------------------------------- |
-| **Gateway**          | Node.js 22 (OpenClaw framework)        |
-| **Voice Processing** | Python 3 + Whisper (STT) + Piper (TTS) |
-| **Containerization** | Docker + Docker Compose                |
-| **Sync**             | Git over SSH                           |
-| **Networking**       | Tailscale (WireGuard VPN)              |
-| **OS**               | Debian 13                              |
-| **PKM App**          | Obsidian                               |
+| Document | Description |
+|----------|-------------|
+| `docs/vault-structure.md` | PARA vault layout and conventions |
+| `docs/agent.md` | Nazar agent — workspace, personality, memory |
+| `docs/syncthing-setup.md` | Detailed Syncthing configuration |
+| `docs/openclaw-config.md` | OpenClaw configuration reference |
+| `docs/troubleshooting.md` | Common issues and fixes |
+| `system/docs/admin-guide.md` | System administration guide |
 
 ---
 
 ## Security Model
 
-Defense-in-depth with 6 layers:
+Defense-in-depth with 5 layers:
 
 1. **Network:** Tailscale VPN + UFW firewall — zero public ports
-2. **Authentication:** SSH keys + gateway tokens — no passwords
-3. **Container:** Docker isolation — agent only sees `/vault`
-4. **Agent Sandbox:** Group chats run in sandboxed Docker containers
-5. **Secrets:** API keys in `.env`, never in vault
-6. **Auto-Patching:** Unattended security upgrades daily
+2. **Authentication:** SSH keys only — no passwords, no root login
+3. **User Isolation:** `nazar` user runs services with no sudo access
+4. **Secrets:** API keys in `~/.openclaw/`, never in vault
+5. **Auto-Patching:** Unattended security upgrades daily
 
 ---
 
-## Contributing
+## Why This Architecture?
 
-This is a personal knowledge management system — fork it and make it yours:
+### Compared to Docker Version
 
-1. Fork the repository
-2. Customize `vault/99-system/openclaw/workspace/SOUL.md` for your agent's personality
-3. Fill in `vault/99-system/openclaw/workspace/USER.md` with your details
-4. Deploy to your own VPS
-5. Share improvements via pull requests
+| Aspect | Old (Docker + Git) | New (Direct + Syncthing) |
+|--------|-------------------|-------------------------|
+| Complexity | High (containers, compose, git hooks) | Low (direct execution) |
+| Sync | Git (cron-based, conflicts) | Syncthing (real-time, auto-resolve) |
+| Resource Usage | Higher (container overhead) | Lower (native processes) |
+| Maintenance | Docker updates, image rebuilds | Just system packages |
+| Reliability | Git merge conflicts | Syncthing conflict files |
+
+### Why Syncthing Over Git?
+
+- **Real-time sync**: Changes propagate instantly
+- **Conflict handling**: Creates `.sync-conflict-*` files instead of breaking
+- **No cron jobs**: No 5-minute delays or push/pull errors
+- **Mobile-friendly**: Native apps, no Git plugins needed
+- **Resilient**: Works offline, syncs when connected
 
 ---
 
@@ -172,4 +230,4 @@ MIT License — feel free to use, modify, and share.
 
 ---
 
-_Built with Obsidian, OpenClaw, and a lot of voice notes._
+_Built with Obsidian, OpenClaw, Syncthing, and a lot of voice notes._

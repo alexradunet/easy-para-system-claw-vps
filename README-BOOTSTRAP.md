@@ -1,243 +1,178 @@
-# Nazar VPS Bootstrap Guide (AI-Assisted)
+# Bootstrap Guide
 
-This is the **AI-assisted setup flow** for the Nazar Second Brain system. Instead of manually running scripts, you'll use Claude Code or Kimi Code directly on the VPS to guide you through the entire setup interactively.
-
----
+Quick reference for bootstrapping a fresh VPS with the simplified Nazar Second Brain setup.
 
 ## Prerequisites
 
-1. **A VPS** — Any Debian 13-based VPS (Hetzner, OVH, DigitalOcean, etc.)
-   - Recommended: 2 vCPU, 4GB RAM, 40GB SSD
-   - Minimum: 1 vCPU, 2GB RAM, 20GB SSD (with swap)
-2. **SSH access** — Root or sudo user access with SSH key
-3. **Tailscale account** — [login.tailscale.com](https://login.tailscale.com) (free)
-4. **API Keys** — For LLM providers (Anthropic, OpenAI, etc.) - needed during `openclaw configure`
-5. **GitHub account** (optional) — Only if you want to use GitHub as your vault remote
+- Fresh Debian 13 or Ubuntu 22.04+ VPS
+- Root SSH access
+- Tailscale account
+- API keys for your LLM provider(s)
 
----
-
-## The Bootstrap Flow
-
-### Step 1: SSH into your fresh VPS
+## One-Line Bootstrap
 
 ```bash
-ssh root@<your-vps-ip>
+curl -fsSL https://raw.githubusercontent.com/<user>/second-brain/main/bootstrap/bootstrap.sh | bash
 ```
 
-### Step 2: Install Claude Code or Kimi Code
+## What Happens
 
-**For Claude Code:**
-```bash
-curl -fsSL https://claude.ai/install.sh | sh
-```
+The bootstrap script will:
 
-**For Kimi Code:**
-```bash
-npm install -g @moonshot-ai/kimi-code
-```
+1. **Create Users**
+   - `debian` — Administrator with sudo access
+   - `nazar` — Service user (no sudo, runs OpenClaw + Syncthing)
 
-### Step 3: Create the deploy directory and clone this repo
+2. **Install Software**
+   - Node.js 22
+   - OpenClaw (npm global)
+   - Syncthing
+   - Tailscale
+   - Python 3 + Whisper + Piper (voice tools)
 
-```bash
-cd ~
-mkdir -p nazar_deploy
-cd nazar_deploy
-# Replace <your-username> with the GitHub username that owns the repo
-git clone https://github.com/<your-username>/second-brain-stack.git .
-```
+3. **Harden Security**
+   - SSH: Keys only, no root login, no passwords
+   - Firewall: UFW with minimal rules
+   - Fail2Ban: Brute-force protection
+   - Auto-updates: Unattended security patches
 
-### Step 4: Launch the AI assistant
+4. **Configure Services**
+   - OpenClaw systemd user service
+   - Syncthing systemd user service
+   - Helper scripts and aliases
 
-```bash
-# For Claude Code
-claude
+## Post-Bootstrap Steps
 
-# For Kimi Code
-kimi
-```
-
-### Step 5: Let the AI guide you
-
-Once the AI assistant is running inside the repository, simply ask:
-
-> **"I'm a new user. Please read the project context and guide me through setting up this VPS for the Nazar Second Brain system."**
-
-The AI will:
-1. Read `AGENTS.md` to understand the project structure
-2. Read `deploy/` configuration files
-3. Guide you step-by-step through:
-   - VPS hardening (SSH, firewall, fail2ban)
-   - Tailscale installation
-   - Docker setup
-   - Repository and vault configuration
-   - Container deployment
-   - Initial configuration
-
----
-
-## What the AI Will Set Up
-
-The AI assistant will configure your VPS with:
-
-| Component | Purpose |
-|-----------|---------|
-| **Hardened SSH** | Key-only auth, no root login, locked to Tailscale |
-| **UFW Firewall** | Deny all incoming, allow SSH only via Tailscale |
-| **Fail2Ban** | Brute-force protection |
-| **Tailscale** | Zero-config VPN for secure access |
-| **Docker + Compose** | Container runtime for the gateway |
-| **Vault Git Repo** | Bare repo at `/srv/nazar/vault.git` |
-| **nazar-gateway** | OpenClaw AI agent with voice processing |
-| **Auto-sync** | Git sync every 5 minutes |
-| **Permission Fix** | Post-receive hook auto-fixes Docker root ownership |
-
----
-
-## Directory Structure After Setup
-
-```
-/srv/nazar/                    # Main installation directory
-├── docker-compose.yml         # Container orchestration
-├── .env                       # Secrets and configuration
-├── vault/                     # Your Obsidian vault (working copy)
-│   ├── 00-inbox/
-│   ├── 01-daily-journey/
-│   ├── 02-projects/
-│   ├── 03-areas/
-│   ├── 04-resources/
-│   ├── 05-arhive/
-│   └── 99-system/            # Agent workspace
-├── vault.git/                 # Bare repo for git sync
-├── scripts/                   # Automation scripts
-└── data/openclaw/            # Agent configuration
-
-~/nazar_deploy/               # This repository (reference)
-```
-
----
-
-## Post-Setup Access
-
-After the AI-guided setup is complete:
-
-### Access the Control UI
-```
-https://<your-vps-tailscale-hostname>/
-```
-
-### Clone your vault locally
-```bash
-git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/nazar-vault
-```
-
-### Open in Obsidian
-Point Obsidian to `~/nazar-vault` and install the Git plugin.
-
----
-
-## Why This Approach?
-
-**Traditional approach:** Copy scripts, read docs, run commands manually, hope nothing breaks.
-
-**AI-assisted approach:** 
-- ✅ Interactive guidance — the AI explains what each step does
-- ✅ Error handling — the AI helps troubleshoot issues in real-time
-- ✅ Customization — adapt the setup to your specific VPS provider
-- ✅ Education — understand your system as it's being built
-- ✅ Safety — the AI confirms destructive actions before executing
-
----
-
-## Known Issues & Solutions
-
-### Git sync not working after setup
-
-If agent writes don't appear on your local machine, or you see "Permission denied" in logs:
+### 1. Configure Tailscale
 
 ```bash
-# SSH to VPS and fix permissions
-ssh debian@100.87.216.31
-sudo chown -R debian:vault /srv/nazar/vault
-sudo chmod -R u+rw /srv/nazar/vault
-sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
+sudo tailscale up
+# Authenticate in browser when prompted
 ```
 
-**Cause:** OpenClaw runs in Docker as root, creating files owned by root. The post-receive hook has been updated to auto-fix this.
-
----
-
-## Troubleshooting
-
-**Claude/Kimi Code won't install?**
-- Ensure Node.js 18+ is installed: `apt update && apt install -y nodejs npm`
-
-**Permission denied during setup?**
-- Make sure you're running as root or with sudo
-
-**Want to start over?**
-```bash
-# Stop containers
-sudo docker compose -f /srv/nazar/docker-compose.yml down 2>/dev/null || true
-# Remove data (WARNING: this deletes your vault on the VPS!)
-# Make sure you have a backup or it's synced elsewhere first!
-sudo rm -rf /srv/nazar
-```
-Then re-run the AI assistant.
-
----
-
-## Post-Setup: Essential Commands
-
-After setup is complete, SSH into your VPS and use these shortcuts:
-
-### Bash Aliases (Pre-configured)
+### 2. Clone Repository
 
 ```bash
-# OpenClaw CLI (inside container)
-dopenclaw doctor              # Check health
-dopenclaw doctor --fix        # Fix issues
-dopenclaw configure           # Configure API keys
-dopenclaw devices list        # List devices
-dopenclaw devices approve <id> # Approve new device
-
-# Docker shortcuts
-dps                           # Container status
-dlogs                         # View logs
-drestart                      # Restart gateway
+su - debian
+git clone <your-repo-url> ~/nazar
+cd ~/nazar
 ```
 
-See **[VPS Setup Cheatsheet](docs/vps-setup-cheatsheet.md)** for full command reference.
-
-### Device Pairing
-
-When accessing the Control UI from a new browser:
-1. Open `https://<your-tailscale-hostname>/`
-2. You'll see "pairing required" — SSH into VPS and run:
-   ```bash
-   dopenclaw devices list
-   dopenclaw devices approve <request-id>
-   drestart
-   ```
-
-### Clone Vault Locally
+### 3. Deploy Vault
 
 ```bash
-git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/nazar-vault
+# Copy vault to nazar user
+sudo cp -r vault/* /home/nazar/vault/
+sudo chown -R nazar:nazar /home/nazar/vault
 ```
 
-Then point Obsidian to `~/nazar-vault`.
+### 4. Start Syncthing
 
----
+```bash
+sudo bash nazar/scripts/setup-syncthing.sh
+```
+
+Access GUI at `http://<tailscale-ip>:8384` and:
+1. Set admin username/password
+2. Note the Device ID
+3. Add your laptop/phone devices
+
+### 5. Start OpenClaw
+
+```bash
+sudo bash nazar/scripts/setup-openclaw.sh
+sudo -u nazar openclaw configure
+```
+
+Access gateway at `https://<tailscale-hostname>/`
+
+## Directory Structure After Bootstrap
+
+```
+/home/nazar/                    # Service user home
+├── vault/                      # Obsidian vault (synced via Syncthing)
+├── .openclaw/                  # OpenClaw config
+│   ├── openclaw.json          # Main config
+│   └── devices/               # Paired devices
+├── .local/
+│   ├── state/syncthing/       # Syncthing data
+│   ├── venv-voice/            # Python voice tools
+│   └── share/                 # Models (whisper, piper)
+└── .config/                   # Application configs
+
+/home/debian/                   # Admin user home
+├── bin/                        # Helper scripts
+│   ├── nazar-logs
+│   ├── nazar-restart
+│   └── nazar-status
+└── nazar/                      # Repository clone (optional)
+```
+
+## Helper Commands
+
+As `debian` user:
+
+```bash
+# Status
+nazar-status
+
+# Logs
+nazar-logs
+
+# Restart OpenClaw
+nazar-restart
+
+# Direct OpenClaw CLI
+sudo -u nazar openclaw [command]
+
+# Syncthing CLI
+sudo -u nazar syncthing cli [command]
+```
+
+## Troubleshooting Bootstrap
+
+### Script Fails
+
+Check logs:
+```bash
+cat /var/log/nazar-bootstrap.log 2>/dev/null || echo "No log file"
+```
+
+### Tailscale Not Starting
+
+```bash
+# Check status
+tailscale status
+
+# Reinstall if needed
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+### Services Won't Start
+
+```bash
+# Check status
+sudo -u nazar systemctl --user status openclaw
+sudo -u nazar systemctl --user status syncthing
+
+# Check logs
+sudo -u nazar journalctl --user -u openclaw
+sudo -u nazar journalctl --user -u syncthing
+```
 
 ## Next Steps
 
-1. ✅ Complete this bootstrap flow
-2. ✅ Configure `openclaw` (add API keys: `dopenclaw configure`)
-3. ✅ Approve your devices (`dopenclaw devices approve`)
-4. ✅ Clone vault locally and open in Obsidian
-5. ✅ Install Obsidian Git plugin for auto-sync
-6. 🎉 Start capturing notes!
+- Read [docs/syncthing-setup.md](docs/syncthing-setup.md) for detailed sync configuration
+- Read [docs/openclaw-config.md](docs/openclaw-config.md) for gateway configuration
+- Read [system/docs/admin-guide.md](system/docs/admin-guide.md) for administration
 
----
+## Comparison with Old Setup
 
-*Ready? SSH into your VPS and start at Step 1 above.*
+| | Old (Docker + Git) | New (Direct + Syncthing) |
+|---|---|---|
+| Setup time | ~30 min (Docker build) | ~5 min (package install) |
+| Resource usage | Higher (containers) | Lower (native) |
+| Sync | Git cron (5 min delay) | Syncthing (real-time) |
+| Conflicts | Git merge issues | Conflict files (easier) |
+| Maintenance | Docker updates, image builds | System packages only |

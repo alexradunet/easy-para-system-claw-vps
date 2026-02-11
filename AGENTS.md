@@ -1,6 +1,8 @@
 # Second Brain — AI-Assisted Personal Knowledge Management
 
-An AI-assisted personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running on OpenClaw, synchronized across devices via Git, and hosted on a hardened Debian VPS behind Tailscale.
+An AI-assisted personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running on OpenClaw, synchronized across devices via Syncthing, and hosted on a hardened Debian VPS behind Tailscale.
+
+**Architecture:** Simple and secure — no Docker, direct execution under dedicated user.
 
 ---
 
@@ -8,9 +10,9 @@ An AI-assisted personal knowledge management system built on Obsidian, powered b
 
 This project consists of three integrated layers:
 
-1. **Content Layer** (`vault/`) — An Obsidian vault organized with the PARA method (Projects, Areas, Resources, Archive)
-2. **Intelligence Layer** (OpenClaw Gateway) — The Nazar AI agent that processes voice messages, manages daily journals, and answers questions about your notes
-3. **Infrastructure Layer** (`deploy/`) — Docker containers running on a hardened VPS with Git-based vault synchronization
+1. **Content Layer** (`vault/`) — An Obsidian vault organized with the PARA method
+2. **Intelligence Layer** (OpenClaw Gateway) — The Nazar AI agent that processes voice messages and manages daily journals
+3. **Infrastructure Layer** — Simple services running directly on the VPS
 
 ```
 second-brain/
@@ -20,15 +22,28 @@ second-brain/
 │   ├── 02-projects/      ← Active projects with goals/deadlines
 │   ├── 03-areas/         ← Life areas requiring ongoing attention
 │   ├── 04-resources/     ← Reference material
-│   ├── 05-arhive/        ← Completed/inactive items
+│   ├── 05-archive/       ← Completed/inactive items
 │   └── 99-system/        ← Agent workspace, skills, templates
-├── deploy/               ← Docker stack for VPS deployment
-│   ├── docker-compose.yml
-│   ├── Dockerfile.nazar
-│   ├── openclaw.json     ← Agent configuration
-│   └── scripts/          ← VPS setup scripts
-└── docs/                 ← Project documentation
+├── nazar/                ← Service user configuration
+│   ├── config/           ← OpenClaw config templates
+│   └── scripts/          ← Setup scripts for services
+├── system/               ← System administration
+│   ├── scripts/          ← Admin helper scripts
+│   └── docs/             ← Admin documentation
+├── bootstrap/            ← VPS bootstrap files
+└── docs/                 ← User documentation
 ```
+
+---
+
+## User Model
+
+| User | Purpose | Permissions |
+|------|---------|-------------|
+| `debian` | System administrator | sudo access, SSH login |
+| `nazar` | Service user | No sudo, runs OpenClaw + Syncthing |
+
+This separation ensures that even if the service account is compromised, the attacker cannot gain root access.
 
 ---
 
@@ -36,10 +51,9 @@ second-brain/
 
 | Component | Technology |
 |-----------|------------|
-| **Gateway** | Node.js 22 (OpenClaw framework) |
+| **Gateway** | Node.js 22 + OpenClaw (npm global install) |
 | **Voice Processing** | Python 3 + Whisper (STT) + Piper (TTS) |
-| **Containerization** | Docker + Docker Compose |
-| **Sync** | Git over SSH |
+| **Sync** | Syncthing (P2P over Tailscale) |
 | **Networking** | Tailscale (WireGuard VPN) |
 | **OS** | Debian 13 |
 | **PKM App** | Obsidian |
@@ -57,7 +71,7 @@ The vault uses the PARA organizational method with numbered kebab-case folders:
 | `02-projects/` | Active projects with clear goals and deadlines |
 | `03-areas/` | Life areas requiring ongoing attention |
 | `04-resources/` | Reference material and knowledge base |
-| `05-arhive/` | Completed or inactive items |
+| `05-archive/` | Completed or inactive items |
 | `99-system/` | System configuration (agent workspace, templates) |
 
 ### Daily Note Format
@@ -124,222 +138,129 @@ Local speech-to-text (Whisper) and text-to-speech (Piper) with Obsidian integrat
 - `convert_to_opus(wav_path)` — WAV → OGG/Opus (WhatsApp)
 
 ### vps-setup/
-VPS provisioning and security hardening scripts:
-- `provision-vps.sh` — Master provisioning script
-- `secure-vps.sh` — SSH hardening, firewall, fail2ban
-- `install-tailscale.sh` — Install Tailscale
-- `install-docker.sh` — Install Docker
-- `audit-vps.sh` — Security audit
+VPS provisioning and security hardening scripts.
 
 ---
 
-## Build and Deployment
+## Bootstrap and Deployment
 
-### Local Development
+### Quick Start
 
 ```bash
-# Clone the repo
-git clone <repo-url>
-cd second-brain
+# On fresh VPS as root
+curl -fsSL https://raw.githubusercontent.com/<user>/second-brain/main/bootstrap/bootstrap.sh | bash
 
-# Open vault in Obsidian
-# (Point Obsidian to the vault/ folder)
+# Follow on-screen instructions to:
+# 1. Start Tailscale
+# 2. Clone and copy vault
+# 3. Start Syncthing
+# 4. Configure OpenClaw
 ```
 
-### VPS Deployment (AI-Assisted Bootstrap)
+### What the Bootstrap Does
 
-**Recommended:** Use Claude Code or Kimi Code directly on the VPS for an interactive, guided setup experience.
+1. **Creates users**: `debian` (admin), `nazar` (service)
+2. **Installs packages**: Node.js 22, OpenClaw, Syncthing, Tailscale
+3. **Hardens security**: SSH keys only, firewall, fail2ban, auto-updates
+4. **Sets up services**: systemd user services for OpenClaw and Syncthing
+5. **Configures environment**: Paths, permissions, helper scripts
 
-**Prerequisites:**
-- Debian 13 VPS (or Ubuntu 22.04+)
-- Root SSH access
-- Tailscale account
+---
 
-**Quick Start — AI-Assisted:**
-```bash
-# 1. SSH into your fresh VPS
-ssh root@<vps-ip>
+## Service Management
 
-# 2. Run the bootstrap preparation script
-curl -fsSL https://raw.githubusercontent.com/<user>/nazar-second-brain/main/bootstrap/bootstrap.sh | bash
-
-# 3. Or manually: Install Node.js + AI assistant
-apt update && apt install -y nodejs npm
-npm install -g @anthropic-ai/claude-code  # or @moonshot-ai/kimi-code
-
-# 4. Clone this repository
-cd ~ && mkdir -p nazar_deploy && cd nazar_deploy
-git clone <this-repo-url> .
-
-# 5. Launch the AI assistant
-claude  # or: kimi
-
-# 6. Ask the AI to guide you:
-# "I'm a new user. Please read the project context and guide me 
-#  through setting up this VPS for the Nazar Second Brain system."
-```
-
-The AI assistant will guide you through:
-- VPS security hardening (SSH, firewall, fail2ban)
-- Tailscale VPN setup
-- Docker installation
-- Repository and vault configuration
-- Container deployment
-- Initial configuration
-
-**Alternative — Scripted Deploy:**
-```bash
-# Copy deploy repo to VPS
-scp -r deploy/ root@<vps-ip>:/srv/nazar/
-
-# SSH and run provisioning
-ssh root@<vps-ip>
-sudo bash /srv/nazar/deploy/scripts/setup-vps.sh
-
-# Configure models and channels
-openclaw configure
-```
-
-**Alternative — Manual Step-by-Step:**
-```bash
-# On VPS as root
-bash vault/99-system/openclaw/skills/vps-setup/scripts/secure-vps.sh
-bash vault/99-system/openclaw/skills/vps-setup/scripts/install-tailscale.sh
-bash vault/99-system/openclaw/skills/vps-setup/scripts/lock-ssh-to-tailscale.sh
-bash vault/99-system/openclaw/skills/vps-setup/scripts/install-docker.sh
-bash /srv/nazar/deploy/scripts/setup-vps.sh
-```
-
-See [README-BOOTSTRAP.md](README-BOOTSTRAP.md) and [docs/bootstrap-guide.md](docs/bootstrap-guide.md) for detailed AI-assisted setup instructions.
-
-### Docker Management
+### OpenClaw Gateway
 
 ```bash
-cd /srv/nazar
+# As debian user (with sudo)
+sudo -u nazar systemctl --user start openclaw
+sudo -u nazar systemctl --user stop openclaw
+sudo -u nazar systemctl --user restart openclaw
 
-# Status
-docker compose ps
+# Or use helper
+nazar-restart
 
 # Logs
-docker compose logs -f nazar-gateway
-
-# Restart
-docker compose restart
-
-# Rebuild
-docker compose build --no-cache nazar-gateway
-docker compose up -d
-
-# Stop
-docker compose down
+nazar-logs
+# or
+sudo -u nazar journalctl --user -u openclaw -f
 ```
 
-### OpenClaw CLI
+### Syncthing
 
 ```bash
-# Configure models, API keys, channels
-openclaw configure
+# As debian user (with sudo)
+sudo -u nazar systemctl --user start syncthing
+sudo -u nazar systemctl --user stop syncthing
 
-# Health check and auto-fix
-openclaw doctor --fix
+# Logs
+sudo -u nazar journalctl --user -u syncthing -f
 
-# List/approve devices
-openclaw devices list
-openclaw devices approve <request-id>
-
-# Channel management
-openclaw channels
+# CLI
+sudo -u nazar syncthing cli show system
 ```
 
 ---
 
-## Vault Synchronization
+## Vault Synchronization (Syncthing)
 
-The vault syncs across devices using Git over SSH through Tailscale:
-
-### Client Setup
-
-```bash
-# Clone vault (from laptop/phone)
-git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/vault
-
-# Or if using external remote
-git clone git@github.com:you/vault.git ~/vault
-```
-
-### With Obsidian Git Plugin
-
-1. Install Obsidian Git plugin
-2. Configure auto-pull: 5 minutes
-3. Configure auto-push: after commit
-4. Configure auto-commit: 5 minutes
-
-### Sync Flow
+Syncthing provides real-time bidirectional sync over Tailscale:
 
 ```
-Laptop/Phone ──git push──► VPS (vault.git bare repo)
-                                │
-                         post-receive hook
-                                │
-                                ▼
-                    VPS working copy (/srv/nazar/vault)
-                                │
-                    cron (every 5 min)
-                                │
-                    auto-commit + push
-                                │
-                                ▼
-                    VPS (vault.git bare repo)
-                                │
-Laptop/Phone ◄──git pull───────┘
+Laptop ◄──────────────────► VPS ◄──────────────────► Phone
+Syncthing                  Syncthing               Syncthing
+~/vault                    /home/nazar/vault       ~/vault
+      \________________________/
+              Tailscale VPN
 ```
+
+### Setup
+
+1. **VPS**: Syncthing runs as `nazar` user on port 8384
+2. **Devices**: Add VPS device ID to laptop/phone Syncthing
+3. **Folder**: Share `nazar-vault` folder across devices
+4. **Sync**: Changes propagate instantly (no cron needed)
+
+### Conflict Handling
+
+Syncthing creates `.sync-conflict-YYYYMMDD-HHMMSS.md` files instead of blocking sync. This is much more reliable than Git merge conflicts.
 
 ---
 
 ## Configuration
 
-### Environment Variables (`.env`)
+### OpenClaw Config
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENCLAW_GATEWAY_TOKEN` | auto-generated | Gateway authentication token |
-| `OPENCLAW_GATEWAY_PORT` | 18789 | Gateway bind port |
-| `VAULT_DIR` | `/srv/nazar/vault` | Vault path on host |
-| `OPENCLAW_CONFIG_DIR` | `/srv/nazar/data/openclaw` | Config path |
-| `WHISPER_MODEL` | `small` | Whisper model size |
-
-### OpenClaw Config (`deploy/openclaw.json`)
+Location: `/home/nazar/.openclaw/openclaw.json`
 
 Key settings:
-- **Sandbox mode:** `non-main` — group chats are sandboxed, direct chats have full access
-- **Gateway:** Token auth, binds to loopback, Tailscale Serve enabled
-- **Max concurrent:** 4 agents, 8 subagents
+- **Sandbox mode**: `non-main` — group chats are sandboxed
+- **Gateway**: Token auth, binds to loopback, Tailscale Serve enabled
+- **Workspace**: Points to `vault/99-system/openclaw/workspace`
 
-### Deploy Configuration
+### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NAZAR_ROOT` | `/srv/nazar` | Base installation directory |
-| `DEPLOY_USER` | `debian` | OS user that owns files |
-| `VAULT_GIT_REMOTE` | *(unset)* | External git remote (GitHub/GitLab) |
+Set in `/home/nazar/.openclaw/.env`:
+- `ANTHROPIC_API_KEY` — Claude API key
+- `OPENAI_API_KEY` — OpenAI API key (if used)
+- `VAULT_PATH` — `/home/nazar/vault`
 
 ---
 
 ## Security Model
 
-Defense-in-depth with 6 layers:
+Defense-in-depth with 5 layers:
 
-1. **Network:** Tailscale VPN + UFW firewall — zero public ports
-2. **Authentication:** SSH keys + gateway tokens — no passwords
-3. **Container:** Docker isolation — agent only sees `/vault`
-4. **Agent Sandbox:** Group chats run in sandboxed Docker containers
-5. **Secrets:** API keys in `.env`, never in vault
-6. **Auto-Patching:** Unattended security upgrades daily
+1. **Network**: Tailscale VPN + UFW firewall — zero public ports
+2. **Authentication**: SSH keys only — no passwords, no root login
+3. **User Isolation**: `nazar` user has no sudo access
+4. **Secrets**: API keys in `~/.openclaw/.env`, never in vault
+5. **Auto-Patching**: Unattended security upgrades daily
 
 ### Security Audit
 
 ```bash
-# Run full security audit
+# Run from vault
 sudo bash vault/99-system/openclaw/skills/vps-setup/scripts/audit-vps.sh
 ```
 
@@ -350,21 +271,15 @@ Checks: root login disabled, SSH key-only, firewall active, Fail2Ban running, au
 ## Code Style Guidelines
 
 ### File Naming
-- **Folders:** kebab-case with numeric prefix (`01-daily-journey/`, not `01 Daily Journey/`)
-- **Daily notes:** `YYYY-MM-DD.md`
-- **Templates:** descriptive names with underscores (`daily_note_template.md`)
-- **No spaces in folder names** — prevents quoting issues across Docker/shell
+- **Folders**: kebab-case with numeric prefix (`01-daily-journey/`)
+- **Daily notes**: `YYYY-MM-DD.md`
+- **Templates**: descriptive names with underscores
+- **No spaces in folder names** — prevents quoting issues
 
 ### Python Skills
-- Use environment variables for paths: `os.environ.get("VAULT_PATH", "/vault")`
-- Never hardcode user paths like `/home/debian/`
-- Import sibling skills via relative path manipulation
+- Use environment variables for paths: `os.environ.get("VAULT_PATH", "/home/nazar/vault")`
+- Never hardcode user paths
 - Keep skills self-contained
-
-### Git Conventions
-- Commit message: present tense, descriptive
-- Agent commits as user `Nazar <nazar@vps>`
-- Auto-commit every 5 minutes via cron
 
 ---
 
@@ -375,41 +290,35 @@ Checks: root login disabled, SSH key-only, firewall active, Fail2Ban running, au
 ```bash
 # Everything at a glance
 echo "=== Tailscale ===" && tailscale status
-echo "=== Docker ===" && cd /srv/nazar && docker compose ps
+echo "=== Services ===" && nazar-status
 echo "=== Firewall ===" && sudo ufw status
-echo "=== Vault Git ===" && git -C /srv/nazar/vault log --oneline -3
-echo "=== Sync Log ===" && tail -5 /srv/nazar/data/git-sync.log
+echo "=== Syncthing ===" && sudo -u nazar syncthing cli show system | head -5
 ```
 
 ### Common Issues
 
-**Container can't write to vault:**
+**Syncthing not syncing:**
 ```bash
-sudo chown -R debian:vault /srv/nazar/vault
-sudo find /srv/nazar/vault -type d -exec chmod 2775 {} +
+# Check device connections
+sudo -u nazar syncthing cli show connections
+
+# Restart Syncthing
+sudo -u nazar systemctl --user restart syncthing
 ```
 
-**Git push rejected (non-fast-forward):**
+**OpenClaw won't start:**
 ```bash
-git pull --rebase origin main
-git push origin main
+# Check config validity
+sudo -u nazar jq . ~/.openclaw/openclaw.json
+
+# Check logs
+sudo -u nazar journalctl --user -u openclaw -n 50
 ```
 
-**Build fails (out of memory):**
+**Permission denied on vault:**
 ```bash
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
+sudo chown -R nazar:nazar /home/nazar/vault
 ```
-
-**Device pairing required:**
-```bash
-openclaw devices list
-openclaw devices approve <request-id>
-```
-
-See `docs/troubleshooting.md` for full details.
 
 ---
 
@@ -419,13 +328,13 @@ See `docs/troubleshooting.md` for full details.
 |----------|-------------|
 | `docs/README.md` | Project overview and quick start |
 | `docs/architecture.md` | System design and data flow |
-| `docs/deployment.md` | VPS provisioning walkthrough |
 | `docs/vault-structure.md` | PARA method and folder conventions |
 | `docs/agent.md` | Nazar agent system and workspace |
 | `docs/skills.md` | Available skills reference |
-| `docs/security.md` | Security model and hardening |
-| `docs/git-sync.md` | Multi-device synchronization |
+| `docs/syncthing-setup.md` | Syncthing configuration |
+| `docs/openclaw-config.md` | OpenClaw configuration |
 | `docs/troubleshooting.md` | Common issues and fixes |
+| `system/docs/admin-guide.md` | System administration guide |
 
 ---
 
@@ -437,50 +346,22 @@ New browsers/devices must be approved before accessing the Control UI:
 
 ```bash
 # List pending devices
-dopenclaw devices list
+sudo -u nazar openclaw devices list
 
 # Approve by request ID
-dopenclaw devices approve <request-id>
+sudo -u nazar openclaw devices approve <request-id>
 
 # Restart gateway to apply
-drestart
+sudo -u nazar systemctl --user restart openclaw
 ```
 
-Device files location:
-- `/srv/nazar/data/openclaw/devices/pending.json` — New requests
-- `/srv/nazar/data/openclaw/devices/paired.json` — Approved devices
+### Bash Aliases (as debian user)
 
-### Bash Aliases
-
-The following aliases are configured on the VPS (`~/.nazar_aliases`):
-
-| Alias | Command |
-|-------|---------|
-| `dopenclaw` | `docker compose ... exec openclaw-gateway npx openclaw` |
-| `dclaw` | Shorthand for `dopenclaw` |
-| `dnazar` or `dn` | Docker compose for Nazar stack |
-| `dps` | `dnazar ps` — Container status |
-| `dlogs` | `dnazar logs -f` — Follow logs |
-| `drestart` | `dnazar restart` — Restart gateway |
-
-### Common Operations
-
-```bash
-# Health check
-dopenclaw doctor
-
-# Fix auto-detected issues
-dopenclaw doctor --fix
-
-# Configure API keys and channels
-dopenclaw configure
-
-# View logs
-dlogs
-
-# Restart gateway
-drestart
-```
+| Alias | Command | Purpose |
+|-------|---------|---------|
+| `nazar-status` | Service status check | Quick health check |
+| `nazar-logs` | View OpenClaw logs | Debug issues |
+| `nazar-restart` | Restart OpenClaw | Apply config changes |
 
 ---
 
@@ -490,9 +371,9 @@ drestart
 |------------|---------|
 | Add a new skill | Create folder in `vault/99-system/openclaw/skills/` |
 | Change agent personality | Edit `vault/99-system/openclaw/workspace/SOUL.md` |
-| Add an LLM provider | Run `dopenclaw configure` |
-| Add a channel | Run `dopenclaw configure` (WhatsApp, Telegram, etc.) |
-| Change vault structure | Rename folders, update skills that reference paths |
+| Add an LLM provider | Run `sudo -u nazar openclaw configure` |
+| Add a channel | Run `sudo -u nazar openclaw configure` |
+| Change vault structure | Rename folders, update skills |
 
 ---
 

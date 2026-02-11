@@ -1,0 +1,29 @@
+# Syncthing ignore patterns for Obsidian vault
+# Place this file in the root of your vault
+
+# Obsidian workspace state (device-specific)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/plugins/obsidian-git/
+
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.swp
+*~
+.trash/
+
+# Python
+__pycache__/
+*.pyc
+
+# Syncthing itself
+.stfolder
+.stversions/
+
+# Optional: Ignore large attachments if stored elsewhere
+# 00-inbox/large-files/

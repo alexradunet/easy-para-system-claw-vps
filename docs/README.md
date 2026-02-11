@@ -1,78 +1,81 @@
-# Second Brain — AI-Assisted Personal Knowledge Management
+# Documentation Index
 
-A personal knowledge management system built on Obsidian, powered by an AI agent (Nazar) running OpenClaw, synchronized across devices via Git, and hosted on a hardened Debian VPS behind Tailscale.
+Welcome to the Nazar Second Brain documentation.
 
-## Clone and Run
-
-```bash
-git clone https://github.com/YOUR_USER/second-brain.git
-cd second-brain
-```
-
-1. Open `vault/` in Obsidian — the PARA folder structure is ready to use
-2. Customize the agent personality in `vault/99-system/openclaw/workspace/SOUL.md`
-3. Fill in your details in `vault/99-system/openclaw/workspace/USER.md`
-4. Deploy to a VPS when ready (see [Deployment Guide](deployment.md))
-
-## What Is This?
-
-Three things working together:
-
-1. **An Obsidian vault** (`vault/`) — organized with the PARA method (Projects, Areas, Resources, Archive) plus Inbox and Daily Journey
-2. **An AI agent** (Nazar) — lives inside the vault, processes voice messages, manages your daily journal, and answers questions about your life
-3. **A deployment stack** (`deploy/`) — Docker containers that run the agent and sync the vault across all your devices
-
-```
-second-brain/
-├── vault/                ← Obsidian vault (PARA structure + agent config)
-│   ├── 00-inbox/         ← Quick capture
-│   ├── 01-daily-journey/ ← Daily notes
-│   ├── 02-projects/      ← Active projects (goals + deadlines)
-│   ├── 03-areas/         ← Life areas (ongoing)
-│   ├── 04-resources/     ← Reference material
-│   ├── 05-arhive/        ← Completed / inactive
-│   └── 99-system/        ← Agent workspace, skills, templates
-├── deploy/               ← Docker stack (push to VPS)
-│   ├── docker-compose.yml
-│   ├── Dockerfile.nazar
-│   └── ...
-└── docs/                 ← This documentation
-```
-
-## Documentation
+## Getting Started
 
 | Document | Description |
 |----------|-------------|
-| [Bootstrap Guide](bootstrap-guide.md) | 🌟 AI-assisted VPS setup walkthrough |
-| [Architecture](architecture.md) | System design, components, data flow |
-| [Vault Structure](vault-structure.md) | PARA vault layout and conventions |
-| [Agent System](agent.md) | Nazar agent — workspace, personality, memory |
-| [Skills Reference](skills.md) | Available skills (obsidian, voice, vps-setup) |
-| [Deployment Guide](deployment.md) | Traditional scripted deployment |
-| [Security Model](security.md) | Hardening, Tailscale, secrets management |
-| [Git Sync](git-sync.md) | Multi-device vault synchronization |
-| [Troubleshooting](troubleshooting.md) | Common issues and fixes |
+| [../README.md](../README.md) | Project overview and quick start |
+| [../README-BOOTSTRAP.md](../README-BOOTSTRAP.md) | VPS bootstrap guide |
+| [syncthing-setup.md](syncthing-setup.md) | Configure vault sync |
+| [openclaw-config.md](openclaw-config.md) | Configure AI gateway |
 
-## Quick Start
+## Understanding the System
 
-### Local only (no VPS)
+| Document | Description |
+|----------|-------------|
+| [architecture.md](architecture.md) | System design and data flow |
+| [vault-structure.md](vault-structure.md) | PARA method and folder conventions |
+| [agent.md](agent.md) | Nazar agent system |
 
-1. Clone this repo
-2. Open `vault/` in Obsidian
-3. Start writing notes — the PARA folder structure is ready
-4. Templates are in `99-system/templates/`
+## Administration
 
-### With VPS deployment
+| Document | Description |
+|----------|-------------|
+| [../system/docs/admin-guide.md](../system/docs/admin-guide.md) | System administration |
+| [troubleshooting.md](troubleshooting.md) | Common issues and fixes |
+| [migration-from-docker.md](migration-from-docker.md) | Migrate from old Docker setup |
 
-1. Spin up a Debian 13 VPS
-2. SSH in as root, install Claude Code
-4. Point Claude Code at the `vps-setup` skill:
-   ```
-   Read vault/99-system/openclaw/skills/vps-setup/SKILL.md and help me set up this VPS
-   ```
-5. Or run the one-liner:
-   ```bash
-   sudo bash provision-vps.sh --deploy-repo /srv/nazar/deploy
-   ```
+## Reference
 
-See [Deployment Guide](deployment.md) for the full walkthrough.
+| Document | Description |
+|----------|-------------|
+| [skills.md](skills.md) | Available agent skills |
+
+## Quick Reference
+
+### Services
+
+```bash
+# Start/stop/restart
+sudo -u nazar systemctl --user {start|stop|restart} openclaw
+sudo -u nazar systemctl --user {start|stop|restart} syncthing
+
+# Status
+nazar-status
+
+# Logs
+nazar-logs                    # OpenClaw
+sudo -u nazar journalctl --user -u syncthing -f  # Syncthing
+```
+
+### Access Points
+
+| Service | URL |
+|---------|-----|
+| OpenClaw Gateway | `https://<tailscale-hostname>/` |
+| Syncthing GUI | `http://<tailscale-ip>:8384` |
+| SSH | `ssh debian@<tailscale-ip>` |
+
+### Important Paths
+
+| Path | Purpose |
+|------|---------|
+| `/home/nazar/vault/` | Obsidian vault |
+| `/home/nazar/.openclaw/` | OpenClaw configuration |
+| `/home/nazar/.local/state/syncthing/` | Syncthing data |
+
+### CLI Commands
+
+```bash
+# OpenClaw
+sudo -u nazar openclaw configure
+sudo -u nazar openclaw devices list
+sudo -u nazar openclaw devices approve <id>
+
+# Syncthing
+sudo -u nazar syncthing cli show system
+sudo -u nazar syncthing cli show connections
+sudo -u nazar syncthing cli show folders
+```
