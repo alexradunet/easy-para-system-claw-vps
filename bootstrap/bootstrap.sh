@@ -184,18 +184,15 @@ else
 fi
 
 # Install selected AI assistant (or update if already installed)
-install_ai_assistant() {
-    local AI_NAME=$1
-    local AI_PACKAGE=$2
-    
-    if command -v $AI_NAME &> /dev/null; then
-        log_info "$AI_NAME already installed. Updating..."
-        npm update -g $AI_PACKAGE > /dev/null 2>&1 || npm install -g $AI_PACKAGE > /dev/null 2>&1
-        log_success "$AI_NAME updated: $($AI_NAME --version 2>/dev/null || echo 'unknown version')"
+if [ "$INSTALL_AI" = "claude" ]; then
+    if command -v claude &> /dev/null; then
+        log_info "Claude Code already installed. Updating..."
+        npm update -g @anthropic-ai/claude-code > /dev/null 2>&1 || npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
+        log_success "Claude Code updated: $(claude --version 2>/dev/null || echo 'unknown version')"
     else
-        log_info "Installing $AI_NAME..."
-        npm install -g $AI_PACKAGE > /dev/null 2>&1
-        log_success "$AI_NAME installed"
+        log_info "Installing Claude Code..."
+        npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
+        log_success "Claude Code installed"
     fi
     
     # Ensure global npm bin is in PATH for the deploy user
@@ -203,16 +200,17 @@ install_ai_assistant() {
     if ! grep -q "$NPM_GLOBAL_BIN" /home/$DEPLOY_USER/.bashrc 2>/dev/null; then
         echo "export PATH=\"$NPM_GLOBAL_BIN:\$PATH\"" >> /home/$DEPLOY_USER/.bashrc
     fi
-    # Also add for root (current session)
     export PATH="$NPM_GLOBAL_BIN:$PATH"
-}
-
-if [ "$INSTALL_AI" = "claude" ]; then
-    install_ai_assistant "claude" "@anthropic-ai/claude-code"
 fi
 
 if [ "$INSTALL_AI" = "kimi" ]; then
-    install_ai_assistant "kimi" "@moonshot-ai/kimi-code"
+    if command -v kimi &> /dev/null; then
+        log_info "Kimi Code already installed"
+    else
+        log_info "Installing Kimi Code..."
+        curl -fsSL https://code.kimi.com/install.sh | bash
+        log_success "Kimi Code installed"
+    fi
 fi
 
 # Create nazar_deploy directory
