@@ -15,7 +15,7 @@ Before starting, confirm with the user:
 2. **Root SSH access** — user can SSH in as root (initial setup)
 3. **Tailscale account** — user has a Tailscale account at https://login.tailscale.com
 4. **Deploy repo** — the `deploy/` git repo is available (locally or on a git remote)
-5. **API keys ready** — Anthropic, Kimi, or other LLM provider keys
+5. **API keys ready** — Anthropic, Kimi, or other LLM provider keys (entered during `openclaw configure`)
 
 ## Scripts
 
@@ -371,23 +371,13 @@ This creates:
 - `vault` group with debian user
 - Cron job: auto-commit every 5 minutes
 
-### Configure secrets
+### Configure models, API keys, and channels
 
 ```bash
-nano /srv/nazar/.env
+openclaw configure
 ```
 
-The user needs to fill in:
-- `ANTHROPIC_API_KEY` — their Anthropic API key
-- `KIMI_API_KEY` — their Kimi API key (if using)
-- `WHATSAPP_NUMBER` — their WhatsApp number
-
-### Restart with secrets
-
-```bash
-cd /srv/nazar
-docker compose restart
-```
+This interactive wizard walks through model selection, API key entry, and channel setup (WhatsApp, etc.). No manual `.env` editing needed.
 
 **Verify:**
 ```bash

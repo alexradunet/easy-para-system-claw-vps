@@ -63,9 +63,8 @@ second-brain/
 
 ### With VPS deployment
 
-1. Copy `.env.example` to `.env` and fill in your API keys
-2. Spin up a Debian 13 VPS
-3. SSH in as root, install Claude Code
+1. Spin up a Debian 13 VPS
+2. SSH in as root, install Claude Code
 4. Point Claude Code at the `vps-setup` skill:
    ```
    Read vault/99-system/openclaw/skills/vps-setup/SKILL.md and help me set up this VPS

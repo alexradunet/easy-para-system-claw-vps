@@ -307,25 +307,16 @@ Or manually edit `/srv/nazar/data/openclaw/openclaw.json` to remove the offendin
 
 ### API key not working
 
+API keys are managed by `openclaw configure`. To re-run configuration:
+
 ```bash
-# Check .env has the key
-grep ANTHROPIC_API_KEY /srv/nazar/.env
+openclaw configure
+```
 
-# Check container sees it
-docker compose exec nazar-gateway env | grep ANTHROPIC
+To verify the container can reach the API:
 
-# Test the key
-docker compose exec nazar-gateway node -e "
-  fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'content-type': 'application/json',
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({model:'claude-sonnet-4-5-20250929',max_tokens:10,messages:[{role:'user',content:'hi'}]})
-  }).then(r => r.json()).then(console.log)
-"
+```bash
+openclaw doctor --fix
 ```
 
 ### Changes to .env not taking effect

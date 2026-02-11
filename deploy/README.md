@@ -19,11 +19,8 @@ git clone <this-repo> /srv/nazar/deploy
 cd /srv/nazar/deploy
 sudo bash scripts/setup-vps.sh
 
-# Edit secrets
-nano /srv/nazar/.env
-
-# Restart with secrets
-cd /srv/nazar && docker compose restart
+# Run setup wizard
+openclaw configure
 
 # Clone vault on your laptop
 git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/vault
@@ -35,7 +32,7 @@ git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/vault
 |------|---------|
 | `docker-compose.yml` | Gateway container definition |
 | `Dockerfile.nazar` | OpenClaw + voice tools image |
-| `openclaw.json` | Agent config (multi-model, sandbox) |
+| `openclaw.json` | Agent config (sandbox, gateway, tools) |
 | `.env.example` | Secrets template |
 | `scripts/setup-vps.sh` | VPS bootstrap script (creates vault group, git repos, cron, starts container) |
 | `scripts/vault-post-receive-hook` | Git hook template (auto-deploys to working copy on push) |

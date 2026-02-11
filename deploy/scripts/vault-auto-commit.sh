@@ -22,7 +22,9 @@ fi
 # Count what changed
 CHANGED=$(git diff --cached --stat | tail -1)
 
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
+
 git commit -m "auto: vault changes ($(date '+%Y-%m-%d %H:%M'))" --quiet 2>>"$LOG"
-git push origin main --quiet 2>>"$LOG"
+git push origin "$BRANCH" --quiet 2>>"$LOG"
 
 log "committed and pushed — $CHANGED"

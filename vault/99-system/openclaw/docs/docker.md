@@ -21,10 +21,10 @@ scp -r deploy/ user@vps:/srv/nazar/deploy/
 ssh user@vps
 sudo bash /srv/nazar/deploy/scripts/setup-vps.sh
 
-# 3. Edit .env with API keys
-nano /srv/nazar/.env
+# 3. Run setup wizard
+openclaw configure
 
-# 4. Restart
+# 4. Restart (if needed)
 cd /srv/nazar && docker compose up -d
 ```
 

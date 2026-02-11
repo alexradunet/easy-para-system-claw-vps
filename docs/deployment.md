@@ -16,7 +16,6 @@ The gateway bind-mounts the vault working copy at `/srv/nazar/vault/`. Vault syn
 - A Debian 13 VPS (OVH, Hetzner, or similar)
 - Root SSH access (initial setup)
 - A Tailscale account ([login.tailscale.com](https://login.tailscale.com))
-- API keys for your LLM provider(s)
 
 ## Option A: Fully Automated (One Script)
 
@@ -47,20 +46,14 @@ This runs all phases:
 - Builds and starts the container
 - Adds swap if low memory
 
-### 3. Configure secrets
+### 3. Run setup wizard
 
 ```bash
 ssh debian@<tailscale-ip>
-nano /srv/nazar/.env
+openclaw configure
 ```
 
-Fill in `ANTHROPIC_API_KEY`, `KIMI_API_KEY`, `WHATSAPP_NUMBER`.
-
-### 4. Restart with secrets
-
-```bash
-cd /srv/nazar && docker compose restart
-```
+This walks through model selection, API keys, channels (WhatsApp), and other settings interactively.
 
 ## Option B: Step by Step
 
@@ -98,11 +91,10 @@ bash install-docker.sh
 bash /srv/nazar/deploy/scripts/setup-vps.sh
 ```
 
-### 6. Configure and start
+### 6. Run setup wizard
 
 ```bash
-nano /srv/nazar/.env
-cd /srv/nazar && docker compose restart
+openclaw configure
 ```
 
 ## Option C: Claude Code Guided
@@ -254,6 +246,17 @@ After approval, refresh the browser and the UI will load normally. Subsequent vi
 
 After verification, complete the initial configuration:
 
-1. **Run onboarding:** `openclaw configure` -- interactive wizard to set up WhatsApp linking, model configuration, and other settings.
-2. **Clone the vault** on your laptop/phone (see [Git Sync docs](git-sync.md)).
+1. **Run `openclaw configure`** — interactive wizard to set up models, API keys, channels (WhatsApp), and other settings. This is the single configuration step.
+2. **Sync your vault:**
+   - **Existing vault?** Push it to the VPS:
+     ```bash
+     cd ~/vault
+     git init && git remote add origin debian@<tailscale-ip>:/srv/nazar/vault.git
+     git add -A && git commit -m "initial vault" && git push -u origin main
+     ```
+   - **Starting fresh?** Clone the empty vault:
+     ```bash
+     git clone debian@<tailscale-ip>:/srv/nazar/vault.git ~/vault
+     ```
+   - See [Git Sync docs](git-sync.md) for multi-device setup (laptop, phone).
 3. **Run a security audit:** `bash audit-vps.sh`

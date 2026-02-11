@@ -25,7 +25,7 @@ The Second Brain is three layers: content, intelligence, and infrastructure.
 │  │   └── USER.md    → knowledge about you                            │
 │  ├── Whisper STT    → voice message transcription                    │
 │  ├── Piper TTS      → voice reply generation                         │
-│  └── LLM backends   → Claude Opus 4.6 / Kimi K2.5                   │
+│  └── LLM backends   → configured via `openclaw configure`            │
 │                                                                      │
 ├──────────────────────────────────────────────────────────────────────┤
 │                      INFRASTRUCTURE LAYER                            │

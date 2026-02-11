@@ -101,7 +101,6 @@ if [ ! -f "$NAZAR_ROOT/.env" ]; then
     TOKEN=$(openssl rand -hex 32)
     sed -i "s/generate-with-openssl-rand-hex-32/$TOKEN/" "$NAZAR_ROOT/.env"
     echo "Generated gateway token."
-    echo "Edit $NAZAR_ROOT/.env with your API keys before starting."
 else
     echo ".env already exists, skipping."
 fi
@@ -123,6 +122,8 @@ echo "Vault:   git clone debian@<tailscale-ip>:/srv/nazar/vault.git"
 echo "Config:  $NAZAR_ROOT/.env"
 echo ""
 echo "Next steps:"
-echo "  1. Edit $NAZAR_ROOT/.env with your API keys"
-echo "  2. Clone vault on your devices: git clone debian@<tailscale-ip>:/srv/nazar/vault.git"
-echo "  3. docker compose restart (after editing .env)"
+echo "  1. Run 'openclaw configure' to set up models, API keys, and channels"
+echo "  2. Import your vault (if you have one):"
+echo "       cd ~/vault && git init && git remote add origin debian@<tailscale-ip>:/srv/nazar/vault.git"
+echo "       git add -A && git commit -m 'initial vault' && git push -u origin main"
+echo "     Or clone the empty vault: git clone debian@<tailscale-ip>:/srv/nazar/vault.git"

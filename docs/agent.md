@@ -108,9 +108,10 @@ Located at `vault/99-system/openclaw/skills/`:
 
 ## Configuration
 
-Agent configuration lives in `deploy/openclaw.json`:
+Agent configuration lives in `deploy/openclaw.json` and `openclaw configure`:
 
-- **Models**: Claude Opus 4.6 (primary), Kimi K2.5 (fallback)
+- **Models**: Configured via `openclaw configure` (not hardcoded)
+- **Channels**: Configured via `openclaw configure` (WhatsApp, etc.)
 - **Sandbox**: `non-main` mode — group/channel sessions are sandboxed, direct chats have full access
 - **Gateway**: Token auth on port 18789
 - **Compaction**: `safeguard` mode for context management

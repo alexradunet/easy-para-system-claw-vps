@@ -34,13 +34,13 @@ This will:
 - Generate a gateway token
 - Build and start containers
 
-### 3. Configure secrets
+### 3. Run setup wizard
 
 ```bash
-nano /srv/nazar/.env
+openclaw configure
 ```
 
-Fill in your API keys and WhatsApp number.
+This sets up models, API keys, and channels (WhatsApp) interactively.
 
 ### 4. Clone vault on your devices
 
