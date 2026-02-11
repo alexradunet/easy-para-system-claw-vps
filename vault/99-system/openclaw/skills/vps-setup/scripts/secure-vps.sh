@@ -1,5 +1,5 @@
 #!/bin/bash
-# secure-vps.sh — Harden a fresh Debian VPS
+# secure-vps.sh — Harden a fresh OVHcloud Debian 13 VPS
 # Run as root or with sudo. Uses the default debian user (no secondary user created).
 set -euo pipefail
 
